@@ -33,8 +33,4 @@
     "tsx": "^4.0.0"
   }
 }
-  ,
-  "vitest": {
-    "environment": "jsdom"
-  }
 }
