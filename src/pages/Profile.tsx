@@ -4,7 +4,7 @@ import { useData } from '../providers/DataProvider'
 import Card from '../components/ui/Card'
 
 export default function Profile(){
-  const { user, profile, updateProfile } = useAuth() as any
+  const { user, profile, updateProfile, signOut } = useAuth() as any
   const { playlists, songs, fetchHistory, getCoverUrl } = useData() as any
   const [items, setItems] = React.useState<any[]>([])
   const [covers, setCovers] = React.useState<Record<string, string>>({})
@@ -56,6 +56,7 @@ export default function Profile(){
         </div>
         <div className="w-2 h-2 rounded-full" style={{background: user ? '#36c36c' : '#3a3a3a'}}></div>
         {user && <button className="btn" onClick={() => { setUname(profile?.username || ''); setAvatar(profile?.avatar_url || ''); setEditOpen(true) }}>编辑个人信息</button>}
+        {user && <button className="btn" style={{marginLeft: 8, color: '#ff4d4f'}} onClick={async () => { await signOut(); window.location.href = '/login' }}>退出登录</button>}
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="p-3 rounded-lg bg-[#1c1c1c]"><div className="text-xs text-muted">歌曲数量</div><div className="font-semibold">{songs.length}</div></div>

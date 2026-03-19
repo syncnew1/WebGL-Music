@@ -6,6 +6,7 @@ type AuthCtx = {
   profile: any
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, username?: string) => Promise<void>
+  signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   updateProfile: (payload: { username?: string; avatar_url?: string }) => Promise<void>
 }
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }){
   }, [])
 
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       if (!supabase || !user) { setProfile(null); return }
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       setProfile(data || null)
@@ -34,27 +35,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }){
   const signIn = async (email: string, password: string) => {
     if (!supabase) throw new Error('未配置 Supabase')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error){
-      const msg = (error.message||'').toLowerCase()
+    if (error) {
+      const msg = (error.message || '').toLowerCase()
       if (msg.includes('invalid login credentials')) throw new Error('密码错误')
       if (msg.includes('user not found')) throw new Error('用户不存在')
       throw new Error('登录失败：' + error.message)
     }
   }
+
   const signUp = async (email: string, password: string, username?: string) => {
     if (!supabase) throw new Error('未配置 Supabase')
     const opts: any = { data: { username }, emailRedirectTo: location.origin + '/login' }
     let attempt = 0, lastErr: any = null
-    while (attempt < 3){
+    while (attempt < 3) {
       attempt++
-      const { data, error } = await supabase.auth.signUp({ email, password, options: opts })
-      if (!error){
-        return
-      }
+      const { error } = await supabase.auth.signUp({ email, password, options: opts })
+      if (!error) return
       lastErr = error
       await new Promise(r => setTimeout(r, 300 * attempt))
     }
     throw new Error('注册失败：' + (lastErr?.message || '未知错误'))
+  }
+
+  const signOut = async () => {
+    if (!supabase) return
+    await supabase.auth.signOut()
+    setUser(null)
+    setProfile(null)
   }
 
   const refreshProfile = async () => {
@@ -70,7 +77,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }){
     else throw new Error(error.message)
   }
 
-  return <Ctx.Provider value={{ user, profile, signIn, signUp, refreshProfile, updateProfile }}>{children}</Ctx.Provider>
+  return (
+    <Ctx.Provider value={{ user, profile, signIn, signUp, signOut, refreshProfile, updateProfile }}>
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export const useAuth = () => {

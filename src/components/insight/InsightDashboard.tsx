@@ -1,132 +1,158 @@
-import React from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { usePlayer } from '../../providers/PlayerProvider'
- 
-import AnimatedCanvas from './AnimatedCanvas'
-import * as Dot from '../../visualizer/gl/dot'
-import * as Particle from '../../visualizer/gl/particle'
-import * as Blur from '../../visualizer/gl/blur'
-import * as Finalize from '../../visualizer/gl/finalize'
+import { AudioAnalyzer, AnalysisFrame } from '../../visualizer/AudioAnalyzer'
+import { SpatialRadar, HarmonyWheel, BandBars, SpectrumWave, InstrumentList } from './VisComponents'
 
-function useRaf(fn: () => void, deps: any[]){
-  React.useEffect(() => { let id = 0; const loop = () => { fn(); id = requestAnimationFrame(loop) }; id = requestAnimationFrame(loop); return () => cancelAnimationFrame(id) }, deps)
+const EMPTY_FRAME: AnalysisFrame = {
+  bands: [], instruments: [], harmony: [],
+  rms: 0, lufs: -60, spectralCentroid: 0, spectralFlux: 0,
 }
 
-function SpectrumPanel({ analyser }: { analyser: AnalyserNode }){
-  const ref = React.useRef<HTMLCanvasElement | null>(null)
-  const buf = React.useRef<Uint8Array | null>(null)
-  useRaf(() => {
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    const w = c.width = c.clientWidth; const h = c.height = c.clientHeight
-    if (!buf.current) buf.current = new Uint8Array(analyser.frequencyBinCount)
-    analyser.getByteFrequencyData(buf.current)
-    ctx.clearRect(0,0,w,h)
-    ctx.strokeStyle = '#cccccc'; ctx.lineWidth = 1.5
-    ctx.beginPath()
-    const n = buf.current.length
-    for (let i=0;i<n;i++){
-      const x = (i/(n-1))*w
-      const y = h - (buf.current[i]/255)*h
-      if (i===0) { ctx.moveTo(x,y) } else { ctx.lineTo(x,y) }
-    }
-    ctx.stroke()
-  }, [analyser])
-  return <div className="card" style={{height:220}}><div className="text-xs text-muted mb-1">Spectrum</div><canvas className="visualizer-canvas" ref={ref} style={{height:'180px'}} /></div>
-}
-
-function LevelsPanel({ analyser }: { analyser: AnalyserNode }){
-  const ref = React.useRef<HTMLCanvasElement | null>(null)
-  const timeL = React.useRef<Float32Array | null>(null)
-  const timeR = React.useRef<Float32Array | null>(null)
-  const capL = React.useRef<number>(0)
-  const capR = React.useRef<number>(0)
-  useRaf(() => {
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    const w = c.width = c.clientWidth; const h = c.height = c.clientHeight
-    if (!timeL.current) timeL.current = new Float32Array(analyser.fftSize)
-    if (!timeR.current) timeR.current = new Float32Array(analyser.fftSize)
-    analyser.getFloatTimeDomainData(timeL.current)
-    analyser.getFloatTimeDomainData(timeR.current) // 浏览器同数据，作为近似
-    const rms = (arr: Float32Array) => Math.sqrt(arr.reduce((s,v)=>s+v*v,0)/arr.length)
-    const l = rms(timeL.current); const r = rms(timeR.current)
-    capL.current = Math.max(capL.current*0.98, l)
-    capR.current = Math.max(capR.current*0.98, r)
-    ctx.clearRect(0,0,w,h)
-    const drawBar = (x:number,val:number,label:string) => {
-      const bw = Math.min(60, w/4)
-      ctx.fillStyle = '#2a2a2a'; ctx.fillRect(x,10,bw,h-20)
-      const hh = (h-20)*Math.min(1,val*1.5)
-      ctx.fillStyle = '#52c41a'; ctx.fillRect(x, h-10-hh, bw, hh)
-      const ch = (h-20)*Math.min(1,(label==='L'?capL.current:capR.current)*1.5)
-      ctx.fillStyle = '#faad14'; ctx.fillRect(x, h-10-ch, bw, 2)
-      ctx.fillStyle = '#b3b3b3'; ctx.font = '12px system-ui'; ctx.fillText(label, x+4, h-4)
-    }
-    drawBar(w*0.35, l, 'L'); drawBar(w*0.55, r, 'R')
-  }, [analyser])
-  return <div className="card" style={{height:220}}><div className="text-xs text-muted mb-1">Levels</div><canvas className="visualizer-canvas" ref={ref} style={{height:'180px'}} /></div>
-}
-
-function LoudnessPanel({ analyser }: { analyser: AnalyserNode }){
-  const ref = React.useRef<HTMLCanvasElement | null>(null)
-  const buf = React.useRef<Float32Array | null>(null)
-  const integ = React.useRef<number>(0)
-  const frames = React.useRef<number>(0)
-  useRaf(() => {
-    const c = ref.current; if (!c) return
-    const ctx = c.getContext('2d')!
-    const w = c.width = c.clientWidth; const h = c.height = c.clientHeight
-    if (!buf.current) buf.current = new Float32Array(analyser.fftSize)
-    analyser.getFloatTimeDomainData(buf.current)
-    const rms = Math.sqrt(buf.current.reduce((s,v)=>s+v*v,0)/buf.current.length)
-    const shortTerm = 20*Math.log10(rms+1e-8)
-    integ.current += shortTerm; frames.current += 1
-    const integrated = integ.current / frames.current
-    const drawValue = (x:number,title:string,val:number,color:string) => {
-      ctx.fillStyle = '#2a2a2a'; ctx.fillRect(x,10, w/3-20, h-20)
-      ctx.fillStyle = color; ctx.font = '24px system-ui'; ctx.fillText(`${val.toFixed(1)} dB`, x+16, h/2)
-      ctx.fillStyle = '#b3b3b3'; ctx.font = '12px system-ui'; ctx.fillText(title, x+16, 26)
-    }
-    ctx.clearRect(0,0,w,h)
-    drawValue(10,'Short Term', shortTerm, '#52c41a')
-    drawValue(w/3+10,'Integrated', integrated, '#ff4d4f')
-    drawValue((2*w)/3+10,'Momentary', shortTerm, '#faad14')
-  }, [analyser])
-  return <div className="card" style={{height:160}}><div className="text-xs text-muted mb-1">Loudness</div><canvas className="visualizer-canvas" ref={ref} style={{height:'120px'}} /></div>
-}
-
-export default function InsightDashboard(){
-  const { analyser, isPlaying } = usePlayer() as any
-  if (!analyser) return null
+function StatPill({ label, value, unit, color }: { label: string; value: string; unit?: string; color?: string }) {
   return (
-    <div className="grid insight-dashboard" style={{gap:12}}>
-      <LoudnessPanel analyser={analyser} />
-      <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:12}}>
-        <LevelsPanel analyser={analyser} />
-        <SpectrumPanel analyser={analyser} />
-      </div>
-      <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:12}}>
-        <Panel title="Dot">
-          <AnimatedCanvas contextType={'webgl2'} onInit={Dot.init} onResize={Dot.resize} onRender={(ctx,d,s,t)=>Dot.render(ctx,{analyser},s)} style={{height:220}} data={{}} isEnabled={true} />
-        </Panel>
-        <Panel title="Particle">
-          <AnimatedCanvas contextType={'webgl2'} onInit={Particle.init} onResize={Particle.resize} onRender={(ctx,d,s,t)=>Particle.render(ctx,{analyser, playing: isPlaying},s)} style={{height:220}} data={{}} isEnabled={true} />
-        </Panel>
-      </div>
-      <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:12}}>
-        <Panel title="Bars">
-          <AnimatedCanvas contextType={'webgl2'} onInit={Blur.init} onResize={Blur.resize} onRender={(ctx,d,s,t)=>Blur.render(ctx,{analyser},s)} style={{height:220}} data={{}} isEnabled={true} />
-        </Panel>
-        <Panel title="Waveform">
-          <AnimatedCanvas contextType={'webgl2'} onInit={Finalize.init} onResize={Finalize.resize} onRender={(ctx,d,s,t)=>Finalize.render(ctx,{analyser},s)} style={{height:220}} data={{}} isEnabled={true} />
-        </Panel>
+    <div style={{
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 10, padding: '10px 14px',
+      display: 'flex', flexDirection: 'column', gap: 3,
+      minWidth: 90,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#727272' }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: color ?? '#fff', lineHeight: 1 }}>
+        {value}<span style={{ fontSize: 11, color: '#727272', marginLeft: 3 }}>{unit}</span>
       </div>
     </div>
   )
 }
 
- 
+export default function InsightDashboard() {
+  const { analyser, isPlaying } = usePlayer() as any
+  const [frame, setFrame] = useState<AnalysisFrame>(EMPTY_FRAME)
+  const analyzerRef = useRef<AudioAnalyzer | null>(null)
+  const rafRef = useRef<number>(0)
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }){
-  return <div className="card" style={{height:240}}><div className="text-xs text-muted mb-1">{title}</div>{children}</div>
+  useEffect(() => {
+    if (!analyser) return
+    analyzerRef.current = new AudioAnalyzer(analyser)
+    const tick = () => {
+      if (analyzerRef.current) {
+        setFrame(analyzerRef.current.analyze())
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      analyzerRef.current = null
+    }
+  }, [analyser])
+
+  if (!analyser) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        height: 400, gap: 16, color: '#727272',
+      }}>
+        <div style={{ fontSize: 48 }}>🎵</div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>请先播放音乐以启动可视化分析</div>
+        <div style={{ fontSize: 12 }}>点击下方播放按钮开始</div>
+      </div>
+    )
+  }
+
+  const lufsStr = isFinite(frame.lufs) ? frame.lufs.toFixed(1) : '-∞'
+  const centroidKhz = (frame.spectralCentroid / 1000).toFixed(1)
+  const rmsDb = (20 * Math.log10(Math.max(frame.rms, 1e-8))).toFixed(1)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '4px 0' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.3px' }}>音频分析</div>
+          <div style={{ fontSize: 12, color: '#727272', marginTop: 2 }}>
+            实时频谱 · 乐器识别 · 声场定位 · 和声分析
+          </div>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '5px 12px', borderRadius: 99,
+          background: isPlaying ? 'rgba(29,185,84,0.15)' : 'rgba(255,255,255,0.05)',
+          border: `1px solid ${isPlaying ? 'rgba(29,185,84,0.4)' : 'rgba(255,255,255,0.1)'}`,
+          fontSize: 12, fontWeight: 600,
+          color: isPlaying ? '#1db954' : '#727272',
+        }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: isPlaying ? '#1db954' : '#727272',
+            animation: isPlaying ? 'pulse 1.5s ease-in-out infinite' : 'none',
+          }} />
+          {isPlaying ? '分析中' : '已暂停'}
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <StatPill label="响度" value={lufsStr} unit="LUFS" color={frame.lufs > -14 ? '#ef4444' : '#1db954'} />
+        <StatPill label="RMS" value={rmsDb} unit="dB" />
+        <StatPill label="音色" value={centroidKhz} unit="kHz" color="#a78bfa" />
+        <StatPill label="瞬态" value={(frame.spectralFlux * 100).toFixed(1)} unit="%" color="#f97316" />
+        <StatPill label="乐器" value={String(frame.instruments.length)} color="#06b6d4" />
+        <StatPill label="音符" value={String(frame.harmony.length)} color="#eab308" />
+      </div>
+
+      {/* Spectrum */}
+      <div style={{
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 14, padding: 16,
+      }}>
+        <SpectrumWave analyser={analyser} />
+      </div>
+
+      {/* Main grid: Spatial + Harmony */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 14, padding: 16,
+        }}>
+          <SpatialRadar frame={frame} />
+        </div>
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 14, padding: 16,
+        }}>
+          <HarmonyWheel frame={frame} />
+        </div>
+      </div>
+
+      {/* Bottom grid: BandBars + InstrumentList */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 14, padding: 16,
+        }}>
+          <BandBars frame={frame} />
+        </div>
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 14, padding: 16,
+        }}>
+          <InstrumentList frame={frame} />
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.85); }
+        }
+      `}</style>
+    </div>
+  )
 }
