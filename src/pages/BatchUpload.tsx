@@ -88,7 +88,10 @@ export default function BatchUpload(){
         }}
       >
         <div className="flex items-center gap-3 flex-wrap">
-          <input type="file" multiple accept="audio/*" onChange={e => addFiles(e.target.files)} />
+          <label style={{ cursor: 'pointer' }}>
+            <input type="file" multiple accept="audio/*" onChange={e => addFiles(e.target.files)} style={{ display: 'none' }} />
+            <span className="btn">选择音频文件</span>
+          </label>
           <div className="text-xs text-muted">{dragging ? '松开以添加文件' : '可将音频文件拖拽至此区域'}</div>
           <div className="flex items-center gap-2 ml-auto">
             <button className="btn" onClick={start} disabled={running || items.length === 0}>
@@ -113,7 +116,7 @@ export default function BatchUpload(){
           {items.length === 0 && <div className="text-xs text-muted">暂无文件，请选择或拖拽音频</div>}
         </div>
       </div>
-      {log && <div className="text-xs" style={{padding: '6px 8px', background: '#2a2a2a', borderRadius: 8}}>{log}</div>}
+      {log && <div className="text-xs" style={{ padding: '6px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-sub)' }}>{log}</div>}
     </div>
   )
 }

@@ -59,6 +59,9 @@ on conflict (id) do nothing;
 
 create policy "storage_read_own_or_signed" on storage.objects
   for select to authenticated using ((bucket_id = 'audio' or bucket_id = 'covers') and (owner = auth.uid()));
+
+create policy "storage_read_audio_authenticated" on storage.objects
+  for select to authenticated using (bucket_id = 'audio');
 create policy "storage_upload_own" on storage.objects
   for insert to authenticated with check ((bucket_id = 'audio' or bucket_id = 'covers') and owner = auth.uid());
 create policy "storage_delete_own" on storage.objects
@@ -66,15 +69,22 @@ create policy "storage_delete_own" on storage.objects
 
 create table if not exists public.playback_history (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null default auth.uid(),
   song_id uuid not null,
   played_at timestamptz default now(),
   played_ms numeric default 0,
   device text default 'browser'
 );
 alter table public.playback_history enable row level security;
-create policy "history_owner_access" on public.playback_history
-  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "history_owner_access" on public.playback_history;
+create policy "history_select_own" on public.playback_history
+  for select to authenticated using (user_id = auth.uid());
+create policy "history_insert_own" on public.playback_history
+  for insert to authenticated with check (user_id = auth.uid());
+create policy "history_update_own" on public.playback_history
+  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "history_delete_own" on public.playback_history
+  for delete to authenticated using (user_id = auth.uid());
 
 create table if not exists public.share_tokens (
   id uuid primary key default gen_random_uuid(),

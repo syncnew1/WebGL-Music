@@ -30,7 +30,7 @@ export default function FilenameTool(){
       <div className="grid gap-2">
         <div className="flex items-center gap-2">
           <input className="search-input flex-1" placeholder="输入文件名，如 歌手-歌曲.扩展名" value={input} onChange={e=>setInput(e.target.value)} />
-          <input type="file" accept="audio/*" onChange={e=>{ const f = e.target.files?.[0]; setFileName(f ? f.name : '') }} />
+          <label style={{cursor:'pointer'}}><span className="btn">选择文件</span><input type="file" accept="audio/*" style={{display:'none'}} onChange={e=>{ const f = e.target.files?.[0]; setFileName(f ? f.name : '') }} /></label>
         </div>
         <div className="card p-6">
           <div className="text-sm text-muted mb-2">解析结果</div>

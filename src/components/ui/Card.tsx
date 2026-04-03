@@ -1,5 +1,19 @@
 import React from 'react'
 
-export default function Card({ children, className = '' }: { children?: React.ReactNode; className?: string }){
-  return <div className={`card ${className}`}>{children}</div>
+type Props = {
+  children?: React.ReactNode
+  className?: string
+  onClick?: () => void
+}
+
+export default function Card({ children, className = '', onClick }: Props) {
+  return (
+    <div
+      className={`card ${className}`}
+      onClick={onClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
+      {children}
+    </div>
+  )
 }

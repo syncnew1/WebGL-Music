@@ -7,13 +7,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: 'var(--bg)',
+        bg:      'var(--bg)',
         surface: 'var(--surface)',
-        text: 'var(--text)',
-        muted: 'var(--text-muted)',
-        accent: '#1db954',
-        borderc: 'var(--border)'
-      }
+        text:    'var(--text)',
+        muted:   'var(--text-muted)',
+        accent:  'var(--accent)',
+        rose:    'var(--rose)',
+        borderc: 'var(--border)',
+      },
+      fontFamily: {
+        display: ['Righteous', 'sans-serif'],
+        body:    ['Poppins', 'system-ui', 'sans-serif'],
+      },
     },
   },
   plugins: [],

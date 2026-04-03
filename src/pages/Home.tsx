@@ -13,7 +13,7 @@ export default function Home(){
   }, [loc?.state?.message])
   return (
     <div className="grid gap-4">
-      {tip && <div className="text-xs" style={{padding:'6px 8px', background:'#2a2a2a', borderRadius:8}}>{tip}</div>}
+      {tip && <div className="text-xs" style={{padding:'6px 8px', background:'var(--surface-2)', borderRadius:8}}>{tip}</div>}
       <h2 className="text-xl font-semibold">为你推荐</h2>
       <ContentGrid />
     </div>

@@ -17,7 +17,7 @@ describe('VolumeControl', () => {
     Object.defineProperty(slider, 'getBoundingClientRect', { value: () => rect })
     fireEvent.click(slider, { clientX: 100 })
     expect(ramp).toHaveBeenCalled()
-    const last = ramp.mock.calls.pop()
+    const last = ramp.mock.calls.pop()!
     expect(last[0]).toBeCloseTo(0.5, 2)
   })
 
@@ -31,7 +31,7 @@ describe('VolumeControl', () => {
     fireEvent.mouseMove(window, { clientX: 200 })
     fireEvent.mouseUp(window)
     expect(ramp).toHaveBeenCalled()
-    const last = ramp.mock.calls.pop()
+    const last = ramp.mock.calls.pop()!
     expect(last[0]).toBeCloseTo(0.8, 2)
   })
 
@@ -43,7 +43,7 @@ describe('VolumeControl', () => {
     slider.focus()
     fireEvent.keyDown(slider, { key: 'ArrowRight' })
     expect(ramp).toHaveBeenCalled()
-    const last = ramp.mock.calls.pop()
+    const last = ramp.mock.calls.pop()!
     expect(last[0]).toBeCloseTo(0.45, 2)
     fireEvent.keyDown(slider, { key: 'm' })
     expect(toggle).toHaveBeenCalled()

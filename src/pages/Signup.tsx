@@ -1,40 +1,94 @@
 import React, { useState } from 'react'
 import { useAuth } from '../providers/AuthProvider'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
-export default function Signup(){
+export default function Signup() {
   const { signUp } = useAuth() as any
   const nav = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [msg, setMsg] = useState('')
+  const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
   const isStrong = (p: string) => /(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}/.test(p)
+
+  const handleSignup = async () => {
+    if (!isStrong(password)) {
+      setMsg('密码需至少8位，包含大小写字母和数字')
+      return
+    }
+    setLoading(true)
+    setStatus('正在创建账号...')
+    setError('')
+    setMsg('')
+    try {
+      await signUp(email, password, username)
+      setStatus('注册成功，正在跳转...')
+      setTimeout(() => nav('/login'), 800)
+    } catch (e: any) {
+      setError(e?.message || '注册失败，可能为重复邮箱')
+      setTimeout(() => setError(''), 3000)
+    } finally {
+      setLoading(false)
+      setStatus('')
+    }
+  }
+
   return (
-    <div className="max-w-sm">
-      <h2 className="text-xl font-semibold mb-3">注册 / 登录</h2>
-      <input className="w-full px-4 py-2 mb-2 rounded-lg border border-borderc bg-[#151515] text-text" placeholder="用户名" value={username} onChange={e=>setUsername(e.target.value)} />
-      <input className="w-full px-4 py-2 mb-2 rounded-lg border border-borderc bg-[#151515] text-text" placeholder="邮箱" value={email} onChange={e=>setEmail(e.target.value)} />
-      <input className="w-full px-4 py-2 mb-2 rounded-lg border border-borderc bg-[#151515] text-text" placeholder="密码" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-      <button className="px-3 py-2 rounded-lg bg-accent text-black" onClick={async () => {
-        console.log('signup submit')
-        if (!isStrong(password)) { setMsg('密码需至少8位，包含大小写字母和数字'); return }
-        setLoading(true); setError(''); setMsg('')
-        try {
-          await signUp(email, password, username)
-          setMsg('验证邮件已发送至您的邮箱，请查收')
-          setTimeout(() => nav('/login'), 1000)
-        } catch (e:any) {
-          setError(e?.message || '注册失败，可能为重复邮箱')
-          setTimeout(() => setError(''), 3000)
-        } finally { setLoading(false) }
-      }}>提交</button>
-      {loading && <div className="mt-2 text-xs text-muted">正在注册...</div>}
-      {msg && <div className="mt-2 text-xs text-muted">{msg}</div>}
-      {error && <div className="mt-2 text-xs" style={{color:'#ff4d4f'}}>{error}</div>}
-      <div className="mt-2 text-xs text-muted">未配置 Supabase 将无法注册，仅登录逻辑测试</div>
+    <div className="auth-page">
+      <div className="auth-orb auth-orb-green" />
+      <div className="auth-orb auth-orb-blue" />
+
+      <div className="auth-card">
+        <h2 className="auth-title">创建账号</h2>
+        <p className="auth-subtitle">加入你的沉浸式音乐可视化空间</p>
+
+        <div className="auth-form">
+          <input
+            className="auth-input"
+            placeholder="用户名"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            disabled={loading}
+          />
+          <input
+            className="auth-input"
+            placeholder="邮箱"
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            disabled={loading}
+          />
+          <input
+            className="auth-input"
+            placeholder="密码"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !loading && handleSignup()}
+            disabled={loading}
+          />
+          <button
+            className="auth-submit"
+            onClick={handleSignup}
+            disabled={loading || !email.trim() || !password || !username.trim()}
+          >
+            {loading ? '注册中...' : '注册'}
+          </button>
+        </div>
+
+        {status && <div className="auth-status">{status}</div>}
+        {msg && <div className="auth-status">{msg}</div>}
+        {error && <div className="auth-error">{error}</div>}
+
+        <div className="auth-switch">
+          已有账号？<Link to="/login">立即登录</Link>
+        </div>
+        <div className="auth-note">未配置 Supabase 时无法注册</div>
+      </div>
     </div>
   )
 }

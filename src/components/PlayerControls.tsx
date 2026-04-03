@@ -17,8 +17,8 @@ export default function PlayerControls(){
     rightOpen, rightMode, openRight,
     centerOpen, openCenter,
     limiterEnabled, setLimiterEnabled,
-  } = usePlayer() as any
-  const { songs, isSongLiked, toggleLikeSong } = useData() as any
+  } = usePlayer()
+  const { songs, isSongLiked, toggleLikeSong } = useData()
 
   const pct = duration ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0
   const curSong = React.useMemo(() => songs.find((s:any) => s.id === current?.id), [songs, current?.id])
@@ -44,8 +44,8 @@ export default function PlayerControls(){
       {/* Left: Track info */}
       <div style={{display:'flex', alignItems:'center', gap:14, minWidth:0, overflow:'hidden'}} >
         <div className="album-thumb">
-          {curSong?.cover_storage_path
-            ? <CoverImage path={curSong.cover_storage_path} style={{width:'100%',height:'100%',objectFit:'cover'}} />
+          {curSong?.cover_storage_path || curSong?.cover_url
+            ? <div style={{width:'100%',height:'100%',overflow:'hidden',borderRadius:'inherit'}}><CoverImage path={curSong.cover_storage_path} url={curSong.cover_url} className="album-thumb" /></div>
             : <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#333 0%,#222 100%)',display:'flex',alignItems:'center',justifyContent:'center',color:'#666',fontSize:22}}>♪</div>
           }
         </div>

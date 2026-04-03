@@ -13,55 +13,92 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null)
 
-export function AuthProvider({ children }: { children: React.ReactNode }){
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
 
   useEffect(() => {
     if (!supabase) return
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null))
-    return () => { sub?.subscription?.unsubscribe() }
+    let alive = true
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return
+      setUser(data.session?.user ?? null)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!alive) return
+      setUser(session?.user ?? null)
+    })
+    return () => { alive = false; sub?.subscription?.unsubscribe() }
   }, [])
 
   useEffect(() => {
+    if (!supabase || !user) { setProfile(null); return }
     ;(async () => {
-      if (!supabase || !user) { setProfile(null); return }
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-      setProfile(data || null)
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        setProfile(data || null)
+      } catch {
+        setProfile(null)
+      }
     })()
   }, [user])
 
   const signIn = async (email: string, password: string) => {
     if (!supabase) throw new Error('未配置 Supabase')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      const msg = (error.message || '').toLowerCase()
-      if (msg.includes('invalid login credentials')) throw new Error('密码错误')
-      if (msg.includes('user not found')) throw new Error('用户不存在')
-      throw new Error('登录失败：' + error.message)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      if (error) {
+        const msg = (error.message || '').toLowerCase()
+        if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) throw new Error('邮箱或密码错误')
+        if (msg.includes('user not found')) throw new Error('用户不存在')
+        if (msg.includes('email not confirmed')) throw new Error('邮箱未验证，请查收验证邮件')
+        throw new Error('登录失败：' + error.message)
+      }
+      setUser(data.session?.user ?? data.user ?? null)
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase()
+      if (msg.includes('fetch failed') || msg.includes('network') || msg.includes('timeout')) {
+        throw new Error('网络无法连接到 Supabase，请检查网络/VPN 后重试')
+      }
+      throw e
     }
   }
 
   const signUp = async (email: string, password: string, username?: string) => {
     if (!supabase) throw new Error('未配置 Supabase')
-    const opts: any = { data: { username }, emailRedirectTo: location.origin + '/login' }
-    let attempt = 0, lastErr: any = null
-    while (attempt < 3) {
-      attempt++
-      const { error } = await supabase.auth.signUp({ email, password, options: opts })
-      if (!error) return
-      lastErr = error
-      await new Promise(r => setTimeout(r, 300 * attempt))
+    const opts: any = { data: { username } }
+
+    try {
+      const timeoutMs = 30000
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('注册超时，请检查网络或稍后重试')), timeoutMs)
+      })
+
+      const result = await Promise.race([
+        supabase.auth.signUp({ email: email.trim(), password, options: opts }),
+        timeoutPromise,
+      ])
+
+      const { error } = result as any
+      if (error) throw new Error('注册失败：' + error.message)
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase()
+      if (msg.includes('fetch failed') || msg.includes('network') || msg.includes('timeout')) {
+        throw new Error('网络无法连接到 Supabase，请检查网络/VPN 后重试')
+      }
+      throw e
     }
-    throw new Error('注册失败：' + (lastErr?.message || '未知错误'))
   }
 
   const signOut = async () => {
-    if (!supabase) return
-    await supabase.auth.signOut()
-    setUser(null)
-    setProfile(null)
+    try {
+      if (supabase) await supabase.auth.signOut({ scope: 'local' })
+    } catch (_) {
+      // 忽略网络错误，强制本地清除
+    } finally {
+      setUser(null)
+      setProfile(null)
+    }
   }
 
   const refreshProfile = async () => {
@@ -71,10 +108,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }){
   }
 
   const updateProfile = async (payload: { username?: string; avatar_url?: string }) => {
-    if (!supabase || !user) return
-    const { error } = await supabase.from('profiles').update(payload).eq('id', user.id)
-    if (!error) await refreshProfile()
-    else throw new Error(error.message)
+    if (!supabase || !user) throw new Error('未登录')
+    // 用 upsert 确保没有记录时也能创建
+    const { error } = await supabase.from('profiles').upsert(
+      { id: user.id, ...payload },
+      { onConflict: 'id' }
+    )
+    if (error) throw new Error('保存失败：' + error.message)
+    await refreshProfile()
   }
 
   return (

@@ -45,17 +45,24 @@ const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
 export class AudioAnalyzer {
   private an: AnalyserNode
   private sr: number
-  private freqBuf: Uint8Array
-  private floatBuf: Float32Array
-  private prevFreq: Float32Array
+  private freqBuf: Uint8Array<ArrayBuffer>
+  private floatBuf: Float32Array<ArrayBuffer>
+  private prevFreq: Float32Array<ArrayBuffer>
   private angleMap = new Map<string, number>()
+  // Smoothed energy per instrument (EMA)
+  private smoothE = new Map<string, number>()
+  // Hold counter: frames to keep instrument visible after signal drops
+  private holdCount = new Map<string, number>()
+  private static readonly HOLD_FRAMES = 18   // ~300ms @60fps
+  private static readonly SMOOTH_UP   = 0.35  // fast attack
+  private static readonly SMOOTH_DOWN = 0.12  // slow decay
 
   constructor(an: AnalyserNode) {
     this.an = an
     this.sr = an.context.sampleRate
-    this.freqBuf = new Uint8Array(an.frequencyBinCount)
-    this.floatBuf = new Float32Array(an.fftSize)
-    this.prevFreq = new Float32Array(an.frequencyBinCount)
+    this.freqBuf = new Uint8Array(new ArrayBuffer(an.frequencyBinCount))
+    this.floatBuf = new Float32Array(new ArrayBuffer(an.fftSize * 4))
+    this.prevFreq = new Float32Array(new ArrayBuffer(an.frequencyBinCount * 4))
   }
 
   private idx(hz: number) {
@@ -117,16 +124,30 @@ export class AudioAnalyzer {
     const bmap = new Map(bands.map(b => [b.name, b.energy]))
     const hits: InstrumentHit[] = []
     for (const p of PROFILES) {
-      const e = p.bands.reduce((s, b) => s + (bmap.get(b) ?? 0), 0) / p.bands.length
-      if (e < p.thr) continue
+      const rawE = p.bands.reduce((s, b) => s + (bmap.get(b) ?? 0), 0) / p.bands.length
+      // Exponential moving average: fast attack, slow decay
+      const prev = this.smoothE.get(p.name) ?? 0
+      const alpha = rawE > prev ? AudioAnalyzer.SMOOTH_UP : AudioAnalyzer.SMOOTH_DOWN
+      const smoothed = prev + alpha * (rawE - prev)
+      this.smoothE.set(p.name, smoothed)
+      // Update hold counter
+      if (rawE >= p.thr) {
+        this.holdCount.set(p.name, AudioAnalyzer.HOLD_FRAMES)
+      } else {
+        const h = (this.holdCount.get(p.name) ?? 0) - 1
+        this.holdCount.set(p.name, Math.max(0, h))
+      }
+      // Only emit if hold active or smoothed energy above threshold
+      const hold = this.holdCount.get(p.name) ?? 0
+      if (smoothed < p.thr * 0.25 && hold === 0) continue
       if (!this.angleMap.has(p.name)) {
         const side = Math.random() > 0.5 ? 1 : -1
         this.angleMap.set(p.name, p.isLow ? 0 : side * (20 + Math.random() * 60))
       }
       hits.push({
-        name: p.name, icon: p.icon, energy: e, color: p.color,
+        name: p.name, icon: p.icon, energy: smoothed, color: p.color,
         angle: this.angleMap.get(p.name)!,
-        distance: Math.max(0.08, Math.min(0.92, 1 - e * 1.1)),
+        distance: Math.max(0.08, Math.min(0.92, 1 - smoothed * 1.1)),
       })
     }
     return hits.sort((a, b) => b.energy - a.energy)

@@ -46,6 +46,14 @@ export const init = (ctx: GL | null) => {
   return { gl, program, vao, buf, pos, vel, count }
 }
 
+export const cleanup = (s: ParticleState) => {
+  const gl = s.gl
+  gl.deleteBuffer(s.buf)
+  gl.deleteVertexArray(s.vao)
+  gl.deleteProgram(s.program)
+  gl.getExtension('WEBGL_lose_context')?.loseContext()
+}
+
 export const resize = (ctx: GL | null, s: ParticleState) => {
   const gl = s.gl
   gl.viewport(0,0,gl.drawingBufferWidth, gl.drawingBufferHeight)

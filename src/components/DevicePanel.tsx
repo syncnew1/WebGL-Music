@@ -11,7 +11,7 @@ export default function DevicePanel({ open, onClose }: { open: boolean; onClose:
         </div>
         <div className="grid gap-2">
           <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-accent"></div><div>此浏览器</div></div>
-          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#2a2a2a]"></div><div>手机设备（未连接）</div></div>
+          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full style={{background:'var(--surface-3)'}}"></div><div>手机设备（未连接）</div></div>
         </div>
       </div>
     </div>

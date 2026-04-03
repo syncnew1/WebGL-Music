@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import NavSidebar from './components/NavSidebar'
 import TopBar from './components/TopBar'
 import PlayerControls from './components/PlayerControls'
@@ -13,14 +13,14 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import FilenameTool from './pages/FilenameTool'
 import BatchUpload from './pages/BatchUpload'
-import InsightDashboard from './components/insight/InsightDashboard'
+const InsightDashboard = lazy(() => import('./components/insight/InsightDashboard'))
 import { usePlayer } from './providers/PlayerProvider'
 import LyricsPanel from './components/LyricsPanel'
 import { useLayout } from './providers/LayoutProvider'
 
 export default function App(){
-  const { rightOpen, rightMode, closeRight, queue, current, centerOpen, play } = usePlayer() as any
-  const { leftOpen } = useLayout() as any
+  const { rightOpen, rightMode, closeRight, queue, current, centerOpen, play } = usePlayer()
+  const { leftOpen } = useLayout()
 
   return (
     <div
@@ -65,7 +65,9 @@ export default function App(){
           background:'var(--bg)',
           transition:'left 200ms,right 200ms',
         }}>
-          <InsightDashboard />
+          <Suspense fallback={<div style={{color:'var(--text-muted)',padding:24,fontSize:13}}>加载中…</div>}>
+            <InsightDashboard />
+          </Suspense>
         </div>
       )}
 
@@ -119,7 +121,7 @@ export default function App(){
                     padding:'8px',borderRadius:6,
                     cursor:'pointer',
                     transition:'background 150ms',
-                    group:'',
+
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background='rgba(255,255,255,0.07)')}
                   onMouseLeave={e => (e.currentTarget.style.background='transparent')}

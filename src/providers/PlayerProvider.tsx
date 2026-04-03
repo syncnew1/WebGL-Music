@@ -64,6 +64,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
   const gainRef = useRef<GainNode | null>(null)
   const compRef = useRef<DynamicsCompressorNode | null>(null)
   const hpRef = useRef<BiquadFilterNode | null>(null)
+  const signedUrlCache = useRef<Map<string, { url: string; exp: number }>>(new Map())
   const [muted, setMuted] = useState(false)
   const prevVolRef = useRef<number>(0.8)
   const [limiterEnabled, setLimiter] = useState(false)
@@ -94,6 +95,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
     audio.crossOrigin = 'anonymous'
     audio.addEventListener('timeupdate', () => setProgress(audio.currentTime))
     audio.addEventListener('durationchange', () => setDuration(audio.duration || 0))
+    audio.addEventListener('error', () => setPlaybackError('音频加载失败，请检查音频地址或存储权限'))
     const endedListener = () => handleEndedRef.current()
     audio.addEventListener('ended', endedListener)
     audio.volume = 0.8
@@ -144,8 +146,36 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
     setAnalyser(newAnalyser)
   }
 
+  const resolveSourceFromStorage = async (storagePath?: string) => {
+    if (!storagePath || (window as any).supabaseClientAvailable === false) return null
+    const { supabase } = await import('../lib/supabaseClient')
+    if (!supabase) return null
+
+    const cacheKey = storagePath
+    const cached = signedUrlCache.current.get(cacheKey)
+    if (cached && cached.exp > Date.now()) return cached.url
+
+    const signed = await supabase.storage.from('audio').createSignedUrl(cacheKey, 60 * 60 * 24)
+    if (!signed.error && signed.data?.signedUrl) {
+      const url = signed.data.signedUrl
+      signedUrlCache.current.set(cacheKey, { url, exp: Date.now() + 23 * 60 * 60 * 1000 })
+      return url
+    }
+
+    const pub = supabase.storage.from('audio').getPublicUrl(cacheKey)
+    if (pub?.data?.publicUrl) return pub.data.publicUrl
+
+    try {
+      const dl = await supabase.storage.from('audio').download(cacheKey)
+      if (!dl.error && dl.data) return URL.createObjectURL(dl.data)
+    } catch {}
+
+    return null
+  }
+
   const play = (t?: Track) => {
     const audio = audioRef.current!
+
     const startPlayback = async () => {
       ensureAudioContext()
       await acRef.current!.resume()
@@ -160,40 +190,91 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
           g.gain.linearRampToValueAtTime(target, now + 0.2)
         }
         await audio.play()
+        setPlaybackError(null)
         setIsPlaying(true)
-      } catch (e) { /* ignore AbortError */ }
-      import('../lib/supabaseClient').then(async ({ supabase }) => {
-        const user = await supabase?.auth.getUser()
-        const songId = t?.id || currentRef.current?.id
-        if (supabase && user?.data.user && songId) {
-          await supabase.from('playback_history').insert({
-            user_id: user.data.user.id, song_id: songId,
-            played_ms: audio.currentTime, device: 'browser',
-          })
+
+        import('../lib/supabaseClient').then(async ({ supabase }) => {
+          const user = await supabase?.auth.getUser()
+          const songId = t?.id || currentRef.current?.id
+          if (supabase && user?.data.user && songId) {
+            await supabase.from('playback_history').insert({
+              user_id: user.data.user.id,
+              song_id: songId,
+              played_ms: audio.currentTime,
+              device: 'browser',
+            })
+          }
+        })
+
+        return true
+      } catch {
+        setIsPlaying(false)
+        return false
+      }
+    }
+
+    const trySource = async (src: string) => {
+      return await new Promise<boolean>((resolve) => {
+        let done = false
+        const cleanup = () => {
+          audio.removeEventListener('canplay', onCanPlay)
+          audio.removeEventListener('error', onError)
+          window.clearTimeout(timer)
         }
+        const finish = (ok: boolean) => {
+          if (done) return
+          done = true
+          cleanup()
+          resolve(ok)
+        }
+        const onCanPlay = async () => {
+          const ok = await startPlayback()
+          finish(ok)
+        }
+        const onError = () => finish(false)
+        const timer = window.setTimeout(() => finish(false), 8000)
+
+        audio.addEventListener('canplay', onCanPlay, { once: true })
+        audio.addEventListener('error', onError, { once: true })
+        audio.src = src
+        audio.load()
       })
     }
+
     if (t) {
       setCurrent(t)
       setPlaybackError(null)
       audio.pause()
       setIsPlaying(false)
       audio.currentTime = 0
-      if (t.url) { audio.src = t.url; audio.load(); startPlayback(); return }
-      if (t.storage_path && (window as any).supabaseClientAvailable !== false) {
-        ;(async () => {
-          try {
-            const { supabase } = await import('../lib/supabaseClient')
-            if (!supabase) throw new Error('Supabase 未配置')
-            const { data, error } = await supabase.storage.from('audio').createSignedUrl(t.storage_path!, 60 * 60 * 24)
-            if (error || !data?.signedUrl) throw new Error('签名 URL 生成失败')
-            audio.src = data.signedUrl; audio.load(); startPlayback()
-          } catch (e: any) { setPlaybackError(e.message || '音频链接生成失败') }
-        })()
-        return
-      }
+
+      ;(async () => {
+        if (!t.url && !t.storage_path) {
+          setPlaybackError('该歌曲缺少可用音频地址，请重新上传')
+          return
+        }
+        const candidates: string[] = []
+        const storageUrl = await resolveSourceFromStorage(t.storage_path)
+        if (storageUrl) candidates.push(storageUrl)
+        if (t.url) candidates.push(t.url)
+
+        const uniq = Array.from(new Set(candidates.filter(Boolean)))
+        for (const src of uniq) {
+          const ok = await trySource(src)
+          if (ok) return
+        }
+
+        if (uniq.length === 0) {
+          const ok = await startPlayback()
+          if (ok) return
+        }
+
+        setPlaybackError('音频加载失败，请检查音频地址或存储权限')
+      })()
+      return
     }
-    startPlayback()
+
+    void startPlayback()
   }
   const pause = () => { audioRef.current?.pause(); setIsPlaying(false) }
 
@@ -258,7 +339,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
   const toggleLike = () => setLiked(v => !v)
   // 防止相同歌曲重复加入队列
   const addToQueue = (t: Track) => {
-    setQueue(prev => prev.some(item => item.id === t.id) ? prev : [...prev, t])
+    setQueue(prev => {
+      const next = prev.some(item => item.id === t.id) ? prev : [...prev, t]
+      if (!currentRef.current) {
+        queueRef.current = next
+        play(t)
+      }
+      return next
+    })
   }
 
   const openRight = (m: 'visualizer' | 'queue' | 'lyrics') => {

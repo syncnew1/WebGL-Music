@@ -48,7 +48,7 @@ export default function Search(){
       <div className="card-grid">
         {results.map((s: Song) => (
           <Card key={s.id}>
-            <CoverImage path={s.cover_storage_path} className="card-cover" />
+            <CoverImage path={s.cover_storage_path} url={s.cover_url} className="card-cover" />
             <div className="font-semibold">{s.title}</div>
             <div className="text-xs text-muted">{s.artist ?? ''}</div>
             <div className="flex gap-2">
