@@ -13,6 +13,7 @@
     "@chenglou/pretext": "^0.0.3",
     "@supabase/supabase-js": "^2.45.4",
     "jsmediatags": "^3.9.7",
+    "opencc-js": "^1.0.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.12.0",

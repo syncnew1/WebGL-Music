@@ -126,44 +126,6 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
     }
   }
 
-  const renderKaraokeText = (line: string, i: number, active: boolean) => {
-    const chars = Array.from(line)
-    if (!active || chars.length === 0) {
-      return <div style={{ fontSize: active ? 27 : 22, lineHeight: active ? 1.22 : 1.28 }}>{line}</div>
-    }
-
-    const now = progress + 0.08
-    const start = synced[i]?.t ?? 0
-    const next = synced[i + 1]?.t ?? (duration > start ? duration : start + 4)
-    const naturalSpan = Math.max(0.8, chars.length * 0.16)
-    const span = Math.max(0.25, Math.min(next - start, naturalSpan))
-    const p = Math.max(0, Math.min(1, (now - start) / span))
-    const hiCount = Math.max(0, Math.min(chars.length, Math.round(p * chars.length)))
-
-    return (
-      <div style={{ fontSize: 27, lineHeight: 1.22 }}>
-        {chars.map((ch, ci) => {
-          const on = ci < hiCount
-          return (
-            <span
-              key={`${i}-${ci}-${ch}`}
-              style={{
-                color: on ? '#ffffff' : 'rgba(255,255,255,0.62)',
-                transform: on ? 'scale(1.07)' : 'scale(1)',
-                display: 'inline-block',
-                transformOrigin: '50% 70%',
-                textShadow: on ? '0 0 10px rgba(255,255,255,0.45), 0 0 24px rgba(255,255,255,0.22)' : 'none',
-                transition: 'color 140ms linear, transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1), text-shadow 180ms ease',
-              }}
-            >
-              {ch === ' ' ? '\u00A0' : ch}
-            </span>
-          )
-        })}
-      </div>
-    )
-  }
-
   const body = (
     <div
       className={inline ? 'w-full h-full' : 'w-full sm:w-[720px] border border-white/10 p-4 rounded-2xl'}
@@ -240,7 +202,7 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
                 }}
                 title={`跳转到 ${Math.floor(x.t / 60).toString().padStart(2, '0')}:${Math.floor(x.t % 60).toString().padStart(2, '0')}`}
               >
-                <div>{renderKaraokeText(x.l, i, active)}</div>
+                <div style={{ fontSize: active ? 27 : 22, lineHeight: active ? 1.22 : 1.28 }}>{x.l}</div>
               </button>
             )
           })}

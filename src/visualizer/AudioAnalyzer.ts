@@ -13,6 +13,8 @@ export type HarmonyNote = {
 export type AnalysisFrame = {
   bands: FreqBand[]; instruments: InstrumentHit[]; harmony: HarmonyNote[]
   rms: number; lufs: number; spectralCentroid: number; spectralFlux: number
+  beat: boolean; beatStrength: number
+  smoothBass: number; smoothMid: number; smoothTreble: number
 }
 
 const BAND_DEFS: Omit<FreqBand,'energy'|'peak'>[] = [
@@ -53,6 +55,10 @@ export class AudioAnalyzer {
   private smoothE = new Map<string, number>()
   // Hold counter: frames to keep instrument visible after signal drops
   private holdCount = new Map<string, number>()
+  private lastBeatAt = 0
+  private bassSmooth = 0
+  private midSmooth = 0
+  private trebleSmooth = 0
   private static readonly HOLD_FRAMES = 18   // ~300ms @60fps
   private static readonly SMOOTH_UP   = 0.35  // fast attack
   private static readonly SMOOTH_DOWN = 0.12  // slow decay
@@ -153,11 +159,31 @@ export class AudioAnalyzer {
     return hits.sort((a, b) => b.energy - a.energy)
   }
 
+  private smoothValue(prev: number, next: number, attack = 0.3, decay = 0.12) {
+    const alpha = next > prev ? attack : decay
+    return prev + alpha * (next - prev)
+  }
+
+  private detectBeat(bassEnergy: number, flux: number, rms: number) {
+    const now = performance.now()
+    const strength = Math.max(0, bassEnergy * 0.7 + flux * 0.9 + rms * 0.4 - 0.38)
+    const beat = strength > 0.16 && now - this.lastBeatAt > 180
+    if (beat) this.lastBeatAt = now
+    return { beat, beatStrength: Math.max(0, Math.min(1, strength * 1.8)) }
+  }
+
   analyze(): AnalysisFrame {
     this.an.getByteFrequencyData(this.freqBuf)
     const bands = BAND_DEFS.map(b => ({ ...b, energy: this.bandEnergy(b.lo, b.hi), peak: 0 }))
     const rms = this.computeRMS()
     const flux = this.computeFlux()
+    const bassRaw = ((bands.find(b => b.name === 'sub')?.energy ?? 0) + (bands.find(b => b.name === 'kick')?.energy ?? 0) + (bands.find(b => b.name === 'bass')?.energy ?? 0)) / 3
+    const midRaw = ((bands.find(b => b.name === 'mid')?.energy ?? 0) + (bands.find(b => b.name === 'upper-mid')?.energy ?? 0)) / 2
+    const trebleRaw = ((bands.find(b => b.name === 'brilliance')?.energy ?? 0) + (bands.find(b => b.name === 'air')?.energy ?? 0) + (bands.find(b => b.name === 'ultra')?.energy ?? 0)) / 3
+    this.bassSmooth = this.smoothValue(this.bassSmooth, bassRaw, 0.32, 0.12)
+    this.midSmooth = this.smoothValue(this.midSmooth, midRaw, 0.26, 0.1)
+    this.trebleSmooth = this.smoothValue(this.trebleSmooth, trebleRaw, 0.28, 0.11)
+    const { beat, beatStrength } = this.detectBeat(this.bassSmooth, flux, rms)
     this.prevFreq.set(this.freqBuf)
     return {
       bands,
@@ -167,6 +193,11 @@ export class AudioAnalyzer {
       lufs: 20 * Math.log10(Math.max(rms, 1e-8)),
       spectralCentroid: this.computeCentroid(),
       spectralFlux: flux,
+      beat,
+      beatStrength,
+      smoothBass: this.bassSmooth,
+      smoothMid: this.midSmooth,
+      smoothTreble: this.trebleSmooth,
     }
   }
 }

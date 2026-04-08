@@ -51,7 +51,6 @@ export const cleanup = (s: ParticleState) => {
   gl.deleteBuffer(s.buf)
   gl.deleteVertexArray(s.vao)
   gl.deleteProgram(s.program)
-  gl.getExtension('WEBGL_lose_context')?.loseContext()
 }
 
 export const resize = (ctx: GL | null, s: ParticleState) => {

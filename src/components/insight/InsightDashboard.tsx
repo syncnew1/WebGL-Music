@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { usePlayer } from '../../providers/PlayerProvider'
+import { useVisualizer } from '../../providers/VisualizerProvider'
 import { AudioAnalyzer, AnalysisFrame } from '../../visualizer/AudioAnalyzer'
+import VisualizerControls from '../VisualizerControls'
 import { SpatialRadar, HarmonyWheel, BandBars, SpectrumWave, InstrumentList } from './VisComponents'
+import WebGLModeCanvas from './WebGLModeCanvas'
 
 const EMPTY_FRAME: AnalysisFrame = {
   bands: [], instruments: [], harmony: [],
   rms: 0, lufs: -60, spectralCentroid: 0, spectralFlux: 0,
+  beat: false, beatStrength: 0,
+  smoothBass: 0, smoothMid: 0, smoothTreble: 0,
 }
 
 function StatPill({ label, value, unit, color, accent }: {
@@ -58,7 +63,8 @@ function PanelCard({ title, children, style }: { title?: string; children: React
 }
 
 export default function InsightDashboard() {
-  const { analyser, isPlaying } = usePlayer() as any
+  const { analyser, isPlaying, current } = usePlayer() as any
+  const { mode, theme, bloom, sensitivity } = useVisualizer()
   const [frame, setFrame] = useState<AnalysisFrame>(EMPTY_FRAME)
   const analyzerRef = useRef<AudioAnalyzer | null>(null)
   const rafRef = useRef<number>(0)
@@ -98,18 +104,16 @@ export default function InsightDashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '6px 0' }}>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
         <div>
           <div style={{
             fontSize: 24, fontWeight: 400, letterSpacing: '0.045em',
             fontFamily: 'Righteous, sans-serif',
             background: 'linear-gradient(90deg, var(--text) 0%, var(--accent) 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-          }}>音频分析</div>
+          }}>音频可视化增强包</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3, fontFamily: 'Poppins, sans-serif', letterSpacing: '0.01em' }}>
-            实时频谱 · 乐器识别 · 声场定位 · 和声分析
+            Beat Detection · Cover Pulse · Bloom Style · 多模式切换
           </div>
         </div>
         <div style={{
@@ -123,32 +127,36 @@ export default function InsightDashboard() {
         }}>
           <div style={{
             width: 7, height: 7, borderRadius: '50%',
-            background: isPlaying ? 'var(--accent)' : 'var(--text-muted)',
-            boxShadow: isPlaying ? '0 0 8px var(--accent)' : 'none',
+            background: frame.beat ? 'var(--rose)' : isPlaying ? 'var(--accent)' : 'var(--text-muted)',
+            boxShadow: frame.beat ? '0 0 10px var(--rose)' : isPlaying ? '0 0 8px var(--accent)' : 'none',
             animation: isPlaying ? 'vis-pulse 1.8s ease-in-out infinite' : 'none',
-            transition: 'all 300ms',
+            transition: 'all 120ms',
           }} />
-          {isPlaying ? '分析中' : '已暂停'}
+          {frame.beat ? '节拍触发' : isPlaying ? '分析中' : '已暂停'}
         </div>
       </div>
 
-      {/* Stats row */}
+      <VisualizerControls />
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <StatPill label="响度" value={lufsStr} unit="LUFS"
-          color={isLoud ? '#ef4444' : 'var(--accent)'} accent={isLoud} />
+        <StatPill label="响度" value={lufsStr} unit="LUFS" color={isLoud ? '#ef4444' : 'var(--accent)'} accent={isLoud} />
         <StatPill label="RMS" value={rmsDb} unit="dB" />
         <StatPill label="音色" value={centroidKhz} unit="kHz" color="var(--rose)" />
         <StatPill label="瞬态" value={(frame.spectralFlux * 100).toFixed(1)} unit="%" color="#a78bfa" />
-        <StatPill label="乐器" value={String(frame.instruments.length)} color="#22d3ee" />
-        <StatPill label="音符" value={String(frame.harmony.length)} color="var(--accent-bright)" />
+        <StatPill label="节拍" value={String(Math.round(frame.beatStrength * 100))} unit="%" color="#f59e0b" accent={frame.beat} />
+        <StatPill label="模式" value={mode === 'cover-pulse' ? '封面' : mode === 'radial' ? '圆环' : '频谱'} color="var(--accent-bright)" />
+        <StatPill label="泛光" value={String(Math.round(bloom * 100))} unit="%" color="var(--accent-bright)" />
       </div>
 
-      {/* Spectrum — full width */}
-      <PanelCard title="频谱">
-        <SpectrumWave analyser={analyser} />
+      <PanelCard title={mode === 'cover-pulse' ? '中心封面脉冲' : mode === 'radial' ? '环形频谱预览' : '频谱预览'} style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
+        <div style={{ position: 'absolute', right: 14, top: 14, zIndex: 2, padding: '6px 10px', borderRadius: 999, background: 'rgba(6,8,14,0.56)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.82)', fontSize: 11, letterSpacing: '0.1em' }}>
+          {mode === 'cover-pulse' ? 'COVER PULSE' : mode === 'radial' ? 'SPECTRUM RING' : 'SPECTRUM'}
+        </div>
+        {mode === 'cover-pulse' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={sensitivity} frame={frame} />}
+        {mode === 'radial' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={sensitivity} frame={frame} />}
+        {mode === 'spectrum' && <SpectrumWave analyser={analyser} theme={theme} />}
       </PanelCard>
 
-      {/* Spatial + Harmony */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <PanelCard title="声场分布">
           <SpatialRadar frame={frame} />
@@ -158,7 +166,6 @@ export default function InsightDashboard() {
         </PanelCard>
       </div>
 
-      {/* Bands + Instruments */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <PanelCard title="频段能量">
           <BandBars frame={frame} />

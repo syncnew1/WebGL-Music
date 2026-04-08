@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { Converter } from 'opencc-js/t2cn'
 import { supabase } from '../lib/supabaseClient'
 
 export type Song = { id: string; title: string; artist?: string; album?: string; tags?: string[]; url?: string; storage_path?: string; cover_storage_path?: string; cover_url?: string; lyrics?: string }
@@ -29,6 +30,7 @@ type DataCtx = {
 }
 
 const Ctx = createContext<DataCtx | null>(null)
+const t2s = Converter({ from: 't', to: 'cn' })
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [songs, setSongs] = useState<Song[]>(() => {
@@ -347,8 +349,44 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateLyrics = async (id: string, lyrics: string) => {
     if (!supabase || !id) return
-    const { error } = await supabase.from('songs').update({ lyrics }).eq('id', id)
-    if (!error) setSongs(prev => prev.map(s => (s.id === id ? { ...s, lyrics } : s)))
+    const normalizedLyrics = t2s(lyrics || '')
+    const { error } = await supabase.from('songs').update({ lyrics: normalizedLyrics }).eq('id', id)
+    if (!error) setSongs(prev => prev.map(s => (s.id === id ? { ...s, lyrics: normalizedLyrics } : s)))
+  }
+
+  const traditionalHintChars = new Set(Array.from('們這個為來時會後發說對於與讓還點開關種麼裡愛聽樂畫體雲無線國專業號風實現應用設計系統資料庫廣場車門燈變當氣萬東葉龍圖書層數據網頁聲音視頻藝術'))
+  const scoreSimplifiedPreference = (text: string) => {
+    let traditionalHits = 0
+    let simplifiedHits = 0
+    for (const ch of text) {
+      if (traditionalHintChars.has(ch)) traditionalHits += 1
+      if (/^[\u4e00-\u9fff]$/.test(ch) && !traditionalHintChars.has(ch)) simplifiedHits += 1
+    }
+    return simplifiedHits - traditionalHits * 4
+  }
+
+  const pickPreferredLyrics = (items: any[]) => {
+    const candidates = (Array.isArray(items) ? items : [])
+      .map(item => {
+        const lyrics = item?.syncedLyrics || item?.plainLyrics
+        if (!lyrics || typeof lyrics !== 'string') return null
+        const text = lyrics.replace(/\[[^\]]+\]/g, '')
+        return {
+          lyrics,
+          score: scoreSimplifiedPreference(text),
+          hasSynced: typeof item?.syncedLyrics === 'string' && item.syncedLyrics.length > 0,
+          length: text.trim().length,
+        }
+      })
+      .filter(Boolean) as { lyrics: string; score: number; hasSynced: boolean; length: number }[]
+
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      if (a.hasSynced !== b.hasSynced) return Number(b.hasSynced) - Number(a.hasSynced)
+      return b.length - a.length
+    })
+
+    return candidates[0]?.lyrics || ''
   }
 
   const autoFillSongMeta = async (id: string, opts?: { cover?: boolean; lyrics?: boolean }) => {
@@ -373,10 +411,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const resp = await fetch(`https://lrclib.net/api/search?${q}`)
         if (resp.ok) {
           const arr = await resp.json()
-          const first = Array.isArray(arr) ? arr[0] : null
-          const lr = first?.syncedLyrics || first?.plainLyrics
-          if (lr && typeof lr === 'string') {
-            lyricsText = lr
+          const preferred = pickPreferredLyrics(Array.isArray(arr) ? arr : [])
+          if (preferred) {
+            lyricsText = t2s(preferred)
             foundLyrics = true
           }
         }
