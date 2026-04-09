@@ -22,10 +22,8 @@ export default function Search(){
     setLoading(false)
   }
 
-  // 初始加载
   useEffect(() => { run('') }, [])
 
-  // 输入变化防抖 300ms
   const handleChange = (val: string) => {
     setQ(val)
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -33,18 +31,29 @@ export default function Search(){
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex items-center gap-2">
-        <input
-          className="search-input"
-          placeholder="搜索歌曲、歌手、专辑、标签"
-          value={q}
-          onChange={e => handleChange(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') run(q) }}
-        />
-        <Button variant="primary" onClick={() => run(q)}>搜索</Button>
-      </div>
-      {loading && <div className="text-xs text-muted">正在搜索...</div>}
+    <div className="grid gap-5">
+      <section className="page-hero">
+        <div className="page-hero-inner grid gap-4">
+          <div className="page-header">
+            <div className="page-heading">
+              <div className="page-kicker">Search</div>
+              <h2 className="page-title">全局搜索</h2>
+              <p className="page-subtitle">查找歌曲、歌手、专辑与标签，快速把结果加入当前播放上下文。</p>
+            </div>
+            <div className={`status-chip ${loading ? 'status-chip--accent' : ''}`}>{loading ? '检索中…' : `结果 ${results.length} 条`}</div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              className="search-input"
+              placeholder="搜索歌曲、歌手、专辑、标签"
+              value={q}
+              onChange={e => handleChange(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') run(q) }}
+            />
+            <Button variant="primary" onClick={() => run(q)}>搜索</Button>
+          </div>
+        </div>
+      </section>
       <div className="card-grid">
         {results.map((s: Song) => (
           <Card key={s.id}>
@@ -57,7 +66,7 @@ export default function Search(){
             </div>
           </Card>
         ))}
-        {!loading && results.length === 0 && <div className="text-xs text-muted">暂无结果</div>}
+        {!loading && results.length === 0 && <div className="status-chip">暂无结果</div>}
       </div>
     </div>
   )

@@ -22,87 +22,56 @@ export default function NavSidebar() {
   const { leftOpen, toggleLeft } = useLayout() as any
 
   const navItems = [
-    { to: '/',          icon: <MdHome size={20} />,         label: '首页' },
-    { to: '/search',    icon: <MdSearch size={20} />,       label: '搜索' },
-    { to: '/library',   icon: <MdLibraryMusic size={20} />, label: '音乐库' },
-    { to: '/playlists', icon: <MdQueueMusic size={20} />,   label: '歌单' },
-    { to: '/profile',   icon: <MdPerson size={20} />,       label: '个人中心' },
+    { to: '/', icon: <MdHome size={20} />, label: '首页' },
+    { to: '/search', icon: <MdSearch size={20} />, label: '搜索' },
+    { to: '/library', icon: <MdLibraryMusic size={20} />, label: '音乐库' },
+    { to: '/playlists', icon: <MdQueueMusic size={20} />, label: '歌单' },
+    { to: '/profile', icon: <MdPerson size={20} />, label: '个人中心' },
   ]
 
   return (
     <aside className="sidebar">
-      {/* Logo header */}
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        justifyContent: leftOpen ? 'space-between' : 'center',
-        padding: leftOpen ? '14px 4px 22px 10px' : '14px 0 22px',
-        flexShrink: 0, position: 'relative', zIndex: 1,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: leftOpen ? 'space-between' : 'center', padding: leftOpen ? '14px 6px 22px 10px' : '14px 0 22px', flexShrink: 0, position: 'relative', zIndex: 1 }}>
         {leftOpen ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Logo />
-            <span style={{
-              fontFamily: 'Righteous, sans-serif',
-              fontSize: 15, letterSpacing: '0.05em',
-              color: '#e8eaf0',
-              whiteSpace: 'nowrap',
-            }}>WebGL Music</span>
+            <div style={{ display: 'grid', gap: 2 }}>
+              <span style={{ fontFamily: 'Righteous, sans-serif', fontSize: 15, letterSpacing: '0.05em', color: '#e8eaf0', whiteSpace: 'nowrap' }}>WebGL Music</span>
+              <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Immersive Console</span>
+            </div>
           </div>
         ) : <Logo />}
 
         {leftOpen ? (
-          <button onClick={toggleLeft} style={{
-            color: 'var(--text-muted)', padding: 4, borderRadius: 6,
-            transition: 'color 150ms, background 150ms', flexShrink: 0,
-          }}
+          <button
+            onClick={toggleLeft}
+            style={{ color: 'var(--text-muted)', padding: 6, borderRadius: 8, transition: 'color 150ms, background 150ms', flexShrink: 0 }}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'rgba(49,194,124,0.1)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
           ><MdChevronLeft size={20} /></button>
         ) : (
-          <button onClick={toggleLeft} style={{
-            position: 'absolute', right: -12, top: 18,
-            width: 24, height: 24, borderRadius: '50%',
-            background: 'var(--surface-2)', border: '1px solid var(--border-2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-sub)', boxShadow: 'var(--shadow-sm)',
-            transition: 'background 150ms',
-          }}
+          <button
+            onClick={toggleLeft}
+            style={{ position: 'absolute', right: -12, top: 18, width: 24, height: 24, borderRadius: '50%', background: 'var(--surface-2)', border: '1px solid var(--border-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-sub)', boxShadow: 'var(--shadow-sm)', transition: 'background 150ms' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-2)' }}
           ><MdChevronRight size={14} /></button>
         )}
       </div>
 
-      {/* Section label */}
-      {leftOpen && (
-        <div style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.14em',
-          textTransform: 'uppercase', color: 'var(--text-muted)',
-          padding: '0 12px 8px', position: 'relative', zIndex: 1,
-        }}>导航</div>
-      )}
+      {leftOpen && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 8px', position: 'relative', zIndex: 1 }}>导航</div>}
 
-      {/* Nav items */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, position: 'relative', zIndex: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, position: 'relative', zIndex: 1 }}>
         {navItems.map(item => (
-          <NavLink
-            key={item.to} to={item.to} end={item.to === '/'}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-          >
+          <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             {item.icon}
             <span className="label">{item.label}</span>
           </NavLink>
         ))}
 
-        <div style={{ height: 1, background: 'var(--border)', margin: '10px 8px' }} />
+        <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, var(--border), transparent)', margin: '12px 8px' }} />
 
-        {leftOpen && (
-          <div style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: '0.14em',
-            textTransform: 'uppercase', color: 'var(--text-muted)',
-            padding: '0 12px 8px',
-          }}>工具</div>
-        )}
+        {leftOpen && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 8px' }}>工具</div>}
 
         <NavLink to="/tools/batch-upload" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
           <MdBuildCircle size={20} />
@@ -110,13 +79,7 @@ export default function NavSidebar() {
         </NavLink>
       </div>
 
-      {leftOpen && (
-        <div style={{
-          fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
-          padding: '8px 0 4px', letterSpacing: '0.06em',
-          position: 'relative', zIndex: 1,
-        }}>v0.1.0</div>
-      )}
+      {leftOpen && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0 4px', letterSpacing: '0.12em', position: 'relative', zIndex: 1 }}>v0.1.0</div>}
     </aside>
   )
 }

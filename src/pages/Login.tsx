@@ -16,16 +16,11 @@ export default function Login() {
     setError('')
     setStatus('正在验证账号...')
 
-    const timeoutMs = 30000
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('登录超时，请检查网络或稍后重试')), timeoutMs)
-    })
-
     try {
-      await Promise.race([signIn(email.trim(), password), timeoutPromise])
+      await signIn(email.trim(), password)
       setStatus('登录成功，正在跳转...')
       const name = email.trim().split('@')[0]
-      nav('/', { state: { message: `欢迎回来，${name}` } })
+      setTimeout(() => nav('/', { state: { message: `欢迎回来，${name}` } }), 300)
     } catch (e: any) {
       setError(e?.message || '登录失败')
       setTimeout(() => setError(''), 5000)
@@ -41,8 +36,15 @@ export default function Login() {
       <div className="auth-orb auth-orb-blue" />
 
       <div className="auth-card">
-        <h2 className="auth-title">欢迎回来</h2>
-        <p className="auth-subtitle">登录后继续你的 WebGL 音乐旅程</p>
+        <div className="page-kicker">Welcome Back</div>
+        <h2 className="auth-title">欢迎回到你的声音宇宙</h2>
+        <p className="auth-subtitle">进入 WebGL Music 控制台，在音乐、频谱与歌词之间继续你的沉浸式旅程。</p>
+
+        <div className="auth-badge-row">
+          <div className="auth-badge">实时频谱</div>
+          <div className="auth-badge">沉浸歌词</div>
+          <div className="auth-badge">私人播放队列</div>
+        </div>
 
         <div className="auth-form">
           <input
@@ -68,7 +70,7 @@ export default function Login() {
             disabled={loading || !email.trim() || !password}
             className="auth-submit"
           >
-            {loading ? '登录中...' : '登录'}
+            {loading ? '登录中...' : '进入工作台'}
           </button>
         </div>
 

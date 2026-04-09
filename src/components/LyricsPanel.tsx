@@ -39,9 +39,7 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
         const mmn = parseInt(mm[1] || '0', 10)
         const s = parseInt(mm[2] || '0', 10)
         const fracRaw = mm[3] || ''
-        const frac = fracRaw
-          ? parseInt(fracRaw, 10) / (fracRaw.length === 3 ? 1000 : fracRaw.length === 2 ? 100 : 10)
-          : 0
+        const frac = fracRaw ? parseInt(fracRaw, 10) / (fracRaw.length === 3 ? 1000 : fracRaw.length === 2 ? 100 : 10) : 0
         const time = mmn * 60 + s + (Number.isFinite(frac) ? frac : 0)
         if (payload) arr.push({ t: time, l: payload, k: `${time}-${payload}-${arr.length}` })
       }
@@ -109,13 +107,7 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
     const d = idx < 0 ? 99 : Math.abs(lineIndex - idx)
     const active = lineIndex === idx
     if (idx < 0) {
-      return {
-        opacity: 0.72,
-        scale: 1,
-        blur: 0,
-        color: 'rgba(255,255,255,0.78)',
-        weight: 520,
-      }
+      return { opacity: 0.72, scale: 1, blur: 0, color: 'rgba(255,255,255,0.78)', weight: 520 }
     }
     return {
       opacity: active ? 1 : d === 1 ? 0.62 : d === 2 ? 0.34 : 0.18,
@@ -130,9 +122,9 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
     <div
       className={inline ? 'w-full h-full' : 'w-full sm:w-[720px] border border-white/10 p-4 rounded-2xl'}
       style={{
-        background: 'linear-gradient(180deg, rgba(22,24,30,0.86) 0%, rgba(10,12,16,0.92) 100%)',
+        background: 'linear-gradient(180deg, rgba(16,20,34,0.98) 0%, rgba(9,13,24,0.98) 100%)',
         backdropFilter: 'blur(26px) saturate(125%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.09), 0 24px 60px rgba(0,0,0,0.45)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 60px rgba(0,0,0,0.45)',
       }}
     >
       {!inline && (
@@ -150,13 +142,15 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
 
       {inline && (
         <div
-          className="flex items-center justify-between px-4 py-3 border-b border-white/10"
+          className="flex items-center justify-between px-4 py-4 border-b"
           style={{
+            borderColor: 'var(--border)',
             background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
             backdropFilter: 'blur(14px)',
           }}
         >
           <div className="min-w-0">
+            <div className="page-kicker" style={{ marginBottom: 6 }}>Lyrics Focus</div>
             <div className="text-sm font-semibold truncate">{current?.title || '未选择曲目'}</div>
             <div className="text-xs text-muted">{current?.artist || '歌词面板'}</div>
           </div>
@@ -166,15 +160,15 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
         </div>
       )}
 
-      {empty && <div className="text-xs text-muted mb-3 px-3">被你发现啦！我们仍在努力获取这首歌的歌词</div>}
+      {empty && <div className="text-xs text-muted mb-3 px-4 pt-3">被你发现啦！我们仍在努力获取这首歌的歌词。</div>}
 
       {!editing && (
         <div
           ref={listRef}
-          className={inline ? 'h-[calc(100%-62px)] overflow-auto px-4 py-8 space-y-2 hide-scrollbar' : 'max-h-72 overflow-auto px-4 py-8 space-y-2 hide-scrollbar'}
+          className={inline ? 'h-[calc(100%-76px)] overflow-auto px-4 py-8 space-y-2 hide-scrollbar' : 'max-h-72 overflow-auto px-4 py-8 space-y-2 hide-scrollbar'}
           style={{
-            background: 'radial-gradient(80% 60% at 50% 50%, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0) 70%), linear-gradient(180deg, #111318 0%, #0b0d10 100%)',
-            borderRadius: 16,
+            background: 'radial-gradient(80% 60% at 50% 50%, rgba(49,194,124,0.10) 0%, rgba(0,0,0,0) 72%), linear-gradient(180deg, #111522 0%, #0a0d16 100%)',
+            borderRadius: 18,
             maskImage: 'linear-gradient(to bottom, transparent 0%, black 16%, black 84%, transparent 100%)',
             WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 16%, black 84%, transparent 100%)',
           }}
@@ -196,9 +190,9 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
                   transform: `scale(${v.scale})`,
                   opacity: v.opacity,
                   filter: `blur(${v.blur}px)`,
-                  background: active ? 'radial-gradient(120% 80% at 50% 50%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.05) 55%, rgba(255,255,255,0.0) 100%)' : 'transparent',
+                  background: active ? 'radial-gradient(120% 80% at 50% 50%, rgba(49,194,124,0.16) 0%, rgba(78,110,242,0.08) 58%, rgba(255,255,255,0.0) 100%)' : 'transparent',
                   letterSpacing: active ? '0.01em' : '0.005em',
-                  textShadow: active ? '0 0 14px rgba(255,255,255,0.42), 0 0 38px rgba(255,255,255,0.18)' : 'none',
+                  textShadow: active ? '0 0 16px rgba(255,255,255,0.40), 0 0 36px rgba(49,194,124,0.18)' : 'none',
                 }}
                 title={`跳转到 ${Math.floor(x.t / 60).toString().padStart(2, '0')}:${Math.floor(x.t % 60).toString().padStart(2, '0')}`}
               >
@@ -218,7 +212,7 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
           <div ref={editorWrapRef} className="px-1">
             <textarea
               id="lyrics-editor"
-              className="w-full h-44 rounded-lg border border-borderc bg-[#151515] text-text p-2"
+              className="w-full h-44 rounded-lg border border-borderc bg-[#101521] text-text p-3"
               placeholder="支持LRC格式时间标签，如 [00:12.34]这一句歌词"
               value={text}
               onChange={e => setText(e.target.value)}

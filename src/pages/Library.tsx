@@ -100,16 +100,24 @@ export default function Library() {
   }
 
   return (
-    <div className="grid gap-4">
-      <h2 className="text-xl font-semibold">音乐库</h2>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" onClick={() => setUploadOpen(true)}>上传音乐</Button>
-        <Button onClick={() => setFillOpen(true)}>补全封面/歌词</Button>
-      </div>
-
-      {msg && <div className="text-xs text-muted">{msg}</div>}
-      {!isSupabaseConfigured() && <div className="text-xs text-muted">未配置 Supabase，上传仅在本地内存中展示，刷新后不会保留</div>}
+    <div className="grid gap-5">
+      <section className="page-hero">
+        <div className="page-hero-inner grid gap-4">
+          <div className="page-header">
+            <div className="page-heading">
+              <div className="page-kicker">Library</div>
+              <h2 className="page-title">音乐库</h2>
+              <p className="page-subtitle">统一管理上传歌曲、批量补全元信息，并让资源入口与卡片区保持同一视觉语法。</p>
+            </div>
+            <div className={`status-chip ${isSupabaseConfigured() ? 'status-chip--accent' : ''}`}>{isSupabaseConfigured() ? '云端同步已启用' : '本地模式'}</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" onClick={() => setUploadOpen(true)}>上传音乐</Button>
+            <Button onClick={() => setFillOpen(true)}>补全封面/歌词</Button>
+            {msg && <div className="status-chip">{msg}</div>}
+          </div>
+        </div>
+      </section>
 
       <div className="card-grid">
         {songs.map((s: any) => (
@@ -118,7 +126,7 @@ export default function Library() {
             <div className="font-semibold">{s.title}</div>
             <div className="text-xs text-muted">{s.artist ?? ''}</div>
             <div className="flex flex-wrap gap-1 items-center">
-              {(s.tags || []).map((t: string, i: number) => (<span key={i} className="text-xs user-chip">{t}</span>))}
+              {(s.tags || []).map((t: string, i: number) => (<span key={i} className="status-chip">{t}</span>))}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Button onClick={() => play(toTrack(s))}>播放</Button>
@@ -158,7 +166,7 @@ export default function Library() {
             </div>
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <Button onClick={toggleAll}>{selectedIds.size === songIds.length ? '取消全选' : '全选'}</Button>
-              <div className="text-xs text-muted">已选 {selectedIds.size} / {songIds.length}</div>
+              <div className="status-chip">已选 {selectedIds.size} / {songIds.length}</div>
               <Button variant="primary" onClick={runBatchFill} disabled={batchBusy}>{batchBusy ? '补全中...' : '开始补全选中歌曲'}</Button>
             </div>
             <div className="grid gap-2 max-h-[420px] overflow-auto pr-1">
@@ -166,7 +174,7 @@ export default function Library() {
                 const opt = ensureOpt(s.id)
                 const picked = selectedIds.has(s.id)
                 return (
-                  <div key={s.id} className="flex items-center justify-between rounded-lg" style={{ padding: '8px 10px', border: '1px solid var(--border)' }}>
+                  <div key={s.id} className="panel-shell panel-shell--soft flex items-center justify-between" style={{ padding: '10px 12px', minWidth: 0 }}>
                     <label className="flex items-center gap-2" style={{ minWidth: 0 }}>
                       <input type="checkbox" checked={picked} onChange={() => togglePick(s.id)} />
                       <span className="text-sm" title={s.title}>{shortName(s)}</span>

@@ -63,8 +63,8 @@ function PanelCard({ title, children, style }: { title?: string; children: React
 }
 
 export default function InsightDashboard() {
-  const { analyser, isPlaying, current } = usePlayer() as any
-  const { mode, theme, bloom, sensitivity } = useVisualizer()
+  const { analyser, isPlaying } = usePlayer() as any
+  const { mode, theme, bloom, sensitivity, smoothing } = useVisualizer()
   const [frame, setFrame] = useState<AnalysisFrame>(EMPTY_FRAME)
   const analyzerRef = useRef<AudioAnalyzer | null>(null)
   const rafRef = useRef<number>(0)
@@ -101,6 +101,7 @@ export default function InsightDashboard() {
   const centroidKhz = (frame.spectralCentroid / 1000).toFixed(1)
   const rmsDb = (20 * Math.log10(Math.max(frame.rms, 1e-8))).toFixed(1)
   const isLoud = frame.lufs > -14
+  const isPulse = mode === 'cover-pulse'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '6px 0' }}>
@@ -111,7 +112,7 @@ export default function InsightDashboard() {
             fontFamily: 'Righteous, sans-serif',
             background: 'linear-gradient(90deg, var(--text) 0%, var(--accent) 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-          }}>音频可视化增强包</div>
+          }}>音频可视化</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3, fontFamily: 'Poppins, sans-serif', letterSpacing: '0.01em' }}>
             Beat Detection · Cover Pulse · Bloom Style · 多模式切换
           </div>
@@ -145,15 +146,17 @@ export default function InsightDashboard() {
         <StatPill label="瞬态" value={(frame.spectralFlux * 100).toFixed(1)} unit="%" color="#a78bfa" />
         <StatPill label="节拍" value={String(Math.round(frame.beatStrength * 100))} unit="%" color="#f59e0b" accent={frame.beat} />
         <StatPill label="模式" value={mode === 'cover-pulse' ? '封面' : mode === 'radial' ? '圆环' : '频谱'} color="var(--accent-bright)" />
-        <StatPill label="泛光" value={String(Math.round(bloom * 100))} unit="%" color="var(--accent-bright)" />
+        <StatPill label="敏感度" value={isPulse ? String(Math.round(sensitivity * 100)) : '--'} unit={isPulse ? '%' : ''} color={isPulse ? 'var(--accent-bright)' : 'var(--text-muted)'} />
+        <StatPill label="平滑" value={isPulse ? String(Math.round(smoothing * 100)) : '--'} unit={isPulse ? '%' : ''} color={isPulse ? '#a78bfa' : 'var(--text-muted)'} />
+        <StatPill label="泛光" value={isPulse ? String(Math.round(bloom * 100)) : '--'} unit={isPulse ? '%' : ''} color={isPulse ? 'var(--accent-bright)' : 'var(--text-muted)'} />
       </div>
 
       <PanelCard title={mode === 'cover-pulse' ? '中心封面脉冲' : mode === 'radial' ? '环形频谱预览' : '频谱预览'} style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'absolute', right: 14, top: 14, zIndex: 2, padding: '6px 10px', borderRadius: 999, background: 'rgba(6,8,14,0.56)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.82)', fontSize: 11, letterSpacing: '0.1em' }}>
           {mode === 'cover-pulse' ? 'COVER PULSE' : mode === 'radial' ? 'SPECTRUM RING' : 'SPECTRUM'}
         </div>
-        {mode === 'cover-pulse' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={sensitivity} frame={frame} />}
-        {mode === 'radial' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={sensitivity} frame={frame} />}
+        {mode === 'cover-pulse' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={sensitivity} />}
+        {mode === 'radial' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={1} />}
         {mode === 'spectrum' && <SpectrumWave analyser={analyser} theme={theme} />}
       </PanelCard>
 

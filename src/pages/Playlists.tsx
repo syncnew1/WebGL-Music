@@ -47,12 +47,23 @@ export default function Playlists() {
   }
 
   return (
-    <div className="grid gap-4">
-      <h2 className="text-xl font-semibold">歌单</h2>
-      <div className="flex items-center gap-2">
-        <Button variant="primary" onClick={() => setCreateOpen(true)}>创建歌单</Button>
-      </div>
-      {msg && <div className="text-xs text-muted">{msg}</div>}
+    <div className="grid gap-5">
+      <section className="page-hero">
+        <div className="page-hero-inner grid gap-4">
+          <div className="page-header">
+            <div className="page-heading">
+              <div className="page-kicker">Playlists</div>
+              <h2 className="page-title">歌单宇宙</h2>
+              <p className="page-subtitle">把收藏、主题和情绪整理成独立歌单，让封面拼贴、入口操作与管理流程保持统一视觉秩序。</p>
+            </div>
+            <div className={`status-chip ${playlists.length > 0 ? 'status-chip--accent' : ''}`}>共 {playlists.length} 个歌单</div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="primary" onClick={() => setCreateOpen(true)}>创建歌单</Button>
+            {msg && <div className="status-chip">{msg}</div>}
+          </div>
+        </div>
+      </section>
 
       <div className="card-grid">
         {playlists.map((pl: any) => {
@@ -77,11 +88,13 @@ export default function Playlists() {
                   <div className="w-full h-full rounded-lg" style={{ background: 'linear-gradient(135deg,#6a5af9,#8a7cfb)' }}>
                     <div className="w-full h-full flex items-center justify-center"><div className="w-8 h-8 rounded-lg bg-white" style={{ maskImage: 'url(data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><path fill=%22black%22 d=%22M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6.01 4.01 4 6.5 4c1.74 0 3.41 1.01 4.15 2.56C11.09 5.01 12.76 4 14.5 4 16.99 4 19 6.01 19 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>)', WebkitMaskImage: 'url(data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><path fill=%22black%22 d=%22M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6.01 4.01 4 6.5 4c1.74 0 3.41 1.01 4.15 2.56C11.09 5.01 12.76 4 14.5 4 16.99 4 19 6.01 19 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>)' }} /></div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="w-full h-full" style={{ background: 'linear-gradient(135deg, var(--surface-2), var(--surface-3))' }} />
+                )}
               </div>
               <div className="font-semibold">{pl.name}</div>
-              <div className="text-xs text-muted">{pl.description || ''}</div>
-              <div className="flex items-center gap-2">
+              <div className="text-xs text-muted">{pl.description || '暂无描述'}</div>
+              <div className="flex items-center gap-2 flex-wrap">
                 <Link className="btn" to={`/playlists/${pl.id}`}>查看详情</Link>
                 {pl.name !== '已点赞歌曲' && <Button onClick={() => onDelete(pl)}>删除</Button>}
               </div>

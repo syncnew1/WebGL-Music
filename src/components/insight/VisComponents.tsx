@@ -258,11 +258,13 @@ export function SpectrumWave({ analyser, theme = 'amber-dark' }: { analyser: Ana
     return () => cancelAnimationFrame(raf.current)
   }, [analyser, theme])
   return (
-    <canvas ref={ref} style={{
-      width: '100%', height: 130, display: 'block',
-      borderRadius: 8, background: 'rgba(9,13,24,0.7)',
-      border: '1px solid rgba(49,194,124,0.07)',
-    }} />
+    <div style={{ position: 'relative', minHeight: 340, borderRadius: 22, overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, rgba(255,255,255,0.04), rgba(6,8,14,0.98) 72%)' }}>
+      <canvas ref={ref} style={{
+        width: '100%', height: 340, display: 'block',
+        borderRadius: 22, background: 'transparent',
+        border: 'none',
+      }} />
+    </div>
   )
 }
 

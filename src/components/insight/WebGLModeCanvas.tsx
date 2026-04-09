@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef } from 'react'
-import type { AnalysisFrame } from '../../visualizer/AudioAnalyzer'
 import * as ringRenderer from '../../visualizer/gl/dot'
 import * as coverRenderer from '../../visualizer/gl/cover'
 
@@ -12,18 +11,18 @@ type Props = {
   mode: Mode
   theme: Theme
   sensitivity: number
-  frame: AnalysisFrame
 }
 
 type RendererState =
   | { kind: 'cover'; state: ReturnType<typeof coverRenderer.init> }
   | { kind: 'ring'; state: ReturnType<typeof ringRenderer.init> }
 
-export default function WebGLModeCanvas({ analyser, isPlaying, mode, theme, sensitivity, frame }: Props) {
+export default function WebGLModeCanvas({ analyser, isPlaying, mode, theme, sensitivity }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<RendererState | null>(null)
   const rafRef = useRef<number>(0)
   const startRef = useRef<number>(performance.now())
+  const appliedSensitivity = mode === 'cover-pulse' ? sensitivity : 1
 
   const webglMode = useMemo<'cover' | 'ring'>(() => {
     if (mode === 'cover-pulse') return 'cover'
@@ -75,7 +74,7 @@ export default function WebGLModeCanvas({ analyser, isPlaying, mode, theme, sens
           playing: isPlaying,
           theme,
           time: (performance.now() - startRef.current) / 1000,
-          sensitivity,
+          sensitivity: appliedSensitivity,
         }, current.state)
       } else {
         ringRenderer.render(gl, { analyser, theme }, current.state)
@@ -93,17 +92,11 @@ export default function WebGLModeCanvas({ analyser, isPlaying, mode, theme, sens
       if (current?.kind === 'cover') coverRenderer.cleanup(current.state)
       rendererRef.current = null
     }
-  }, [analyser, webglMode, theme, sensitivity, isPlaying])
+  }, [analyser, webglMode, theme, appliedSensitivity, isPlaying])
 
   return (
     <div style={{ position: 'relative', minHeight: 340, borderRadius: 22, overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, rgba(255,255,255,0.04), rgba(6,8,14,0.98) 72%)' }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: 340, display: 'block' }} />
-      <div style={{ position: 'absolute', left: 18, bottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <div style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(6,8,14,0.52)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>WEBGL</div>
-        <div style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(6,8,14,0.52)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>
-          Beat {Math.round(frame.beatStrength * 100)}%
-        </div>
-      </div>
     </div>
   )
 }

@@ -24,29 +24,43 @@ export default function FilenameTool(){
     'Artist-Track',
     'Artist-Track.name.ext.extra.mp3'
   ]
+
   return (
-    <div className="grid gap-4">
-      <h2 className="text-xl font-semibold">文件名解析</h2>
-      <div className="grid gap-2">
-        <div className="flex items-center gap-2">
-          <input className="search-input flex-1" placeholder="输入文件名，如 歌手-歌曲.扩展名" value={input} onChange={e=>setInput(e.target.value)} />
-          <label style={{cursor:'pointer'}}><span className="btn">选择文件</span><input type="file" accept="audio/*" style={{display:'none'}} onChange={e=>{ const f = e.target.files?.[0]; setFileName(f ? f.name : '') }} /></label>
-        </div>
-        <div className="card p-6">
-          <div className="text-sm text-muted mb-2">解析结果</div>
-          <div className="text-2xl font-semibold truncate break-words">{result || '格式不符'}</div>
-        </div>
-      </div>
-      <div className="grid gap-2">
-        <div className="text-sm text-muted">测试用例</div>
-        <div className="card-grid">
-          {tests.map((t, i) => (
-            <div className="card" key={i}>
-              <div className="text-xs text-muted">{t}</div>
-              <div className="text-lg font-semibold truncate break-words">{parseSongName(t)}</div>
+    <div className="grid gap-5">
+      <section className="page-hero">
+        <div className="page-hero-inner grid gap-4">
+          <div className="page-header">
+            <div className="page-heading">
+              <div className="page-kicker">Filename Tool</div>
+              <h2 className="page-title">文件名解析</h2>
+              <p className="page-subtitle">快速从文件名中提取歌曲标题，辅助上传流程中的基础元信息预处理。</p>
             </div>
-          ))}
+            <div className="status-chip status-chip--accent">即时解析</div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input className="search-input flex-1" placeholder="输入文件名，如 歌手-歌曲.扩展名" value={input} onChange={e => setInput(e.target.value)} />
+            <label style={{ cursor:'pointer' }}><span className="btn">选择文件</span><input type="file" accept="audio/*" style={{ display:'none' }} onChange={e => { const f = e.target.files?.[0]; setFileName(f ? f.name : '') }} /></label>
+          </div>
         </div>
+      </section>
+
+      <div className="panel-shell" style={{ padding: 24 }}>
+        <div className="page-kicker" style={{ marginBottom: 10 }}>Result</div>
+        <div className="text-sm text-muted mb-2">解析结果</div>
+        <div className="page-title" style={{ fontSize: 26 }}>{result || '格式不符'}</div>
+      </div>
+
+      <div className="page-heading">
+        <div className="page-kicker">Examples</div>
+        <h3 className="page-title" style={{ fontSize: 24 }}>测试用例</h3>
+      </div>
+      <div className="card-grid">
+        {tests.map((t, i) => (
+          <div className="card" key={i}>
+            <div className="text-xs text-muted">{t}</div>
+            <div className="text-lg font-semibold truncate break-words">{parseSongName(t)}</div>
+          </div>
+        ))}
       </div>
     </div>
   )

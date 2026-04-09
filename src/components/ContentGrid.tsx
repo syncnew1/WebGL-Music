@@ -38,13 +38,25 @@ export default function ContentGrid(){
   const list = useMemo(() => songs.slice(0, 12), [songs])
 
   return (
-    <div className="card-grid">
-      {list.map(s => (
-        <SongCard key={s.id} song={s} play={play} addToQueue={addToQueue} />
-      ))}
-      {list.length === 0 && (
-        <div className="text-xs text-muted">暂无数据，请前往"音乐库"上传或在 Supabase 添加歌曲</div>
-      )}
+    <div className="grid gap-4">
+      <div className="panel-shell panel-shell--soft" style={{ padding: 16 }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="page-kicker" style={{ marginBottom: 6 }}>Featured Picks</div>
+            <div className="text-sm" style={{ color: 'var(--text-sub)' }}>选择一首开始播放，或先加入队列构建你的沉浸式流程。</div>
+          </div>
+          <div className="status-chip">Top 12</div>
+        </div>
+      </div>
+
+      <div className="card-grid">
+        {list.map(s => (
+          <SongCard key={s.id} song={s} play={play} addToQueue={addToQueue} />
+        ))}
+        {list.length === 0 && (
+          <div className="status-chip">暂无数据，请前往“音乐库”上传或在 Supabase 添加歌曲</div>
+        )}
+      </div>
     </div>
   )
 }
