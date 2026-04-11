@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../providers/AuthProvider'
 import { useData } from '../providers/DataProvider'
@@ -124,23 +125,25 @@ export default function Profile() {
           const latestSongIds = [...(pl.songs || [])].slice(-4).reverse()
           const latestSongs = latestSongIds.map((sid: string) => songs.find((s: any) => s.id === sid)).filter(Boolean)
           return (
-            <Card key={pl.id}>
-              <div className="card-cover" style={{ overflow: 'hidden' }}>
-                {latestSongs.length > 0 ? (
-                  <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2 }}>
-                    {latestSongs.map((s: any, i: number) => (
-                      <div key={`${pl.id}-${s.id}-${i}`} style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 4 }}>
-                        <CoverImage path={s.cover_storage_path} url={s.cover_url} className="w-full h-full" />
-                      </div>
-                    ))}
-                    {Array.from({ length: Math.max(0, 4 - latestSongs.length) }).map((_, i) => (
-                      <div key={`${pl.id}-empty-${i}`} style={{ background: 'var(--surface-3)', borderRadius: 4 }} />
-                    ))}
-                  </div>
-                ) : <div className="w-full h-full" style={{ background: 'linear-gradient(135deg, var(--surface-2), var(--surface-3))' }} />}
-              </div>
-              <div className="font-semibold">{pl.name}</div>
-            </Card>
+            <Link key={pl.id} to={`/playlists/${pl.id}`} className="block">
+              <Card>
+                <div className="card-cover" style={{ overflow: 'hidden' }}>
+                  {latestSongs.length > 0 ? (
+                    <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2 }}>
+                      {latestSongs.map((s: any, i: number) => (
+                        <div key={`${pl.id}-${s.id}-${i}`} style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 4 }}>
+                          <CoverImage path={s.cover_storage_path} url={s.cover_url} className="w-full h-full" />
+                        </div>
+                      ))}
+                      {Array.from({ length: Math.max(0, 4 - latestSongs.length) }).map((_, i) => (
+                        <div key={`${pl.id}-empty-${i}`} style={{ background: 'var(--surface-3)', borderRadius: 4 }} />
+                      ))}
+                    </div>
+                  ) : <div className="w-full h-full" style={{ background: 'linear-gradient(135deg, var(--surface-2), var(--surface-3))' }} />}
+                </div>
+                <div className="font-semibold">{pl.name}</div>
+              </Card>
+            </Link>
           )
         })}
       </div>

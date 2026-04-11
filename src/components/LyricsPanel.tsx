@@ -201,10 +201,14 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
             )
           })}
 
-          {!hasSynced && unsynced.map((x) => (
-            <div key={x.k} className="text-center px-3 py-2" style={{ fontSize: 21, lineHeight: 1.35, color: 'rgba(255,255,255,0.82)' }}>{x.l}</div>
-          ))}
-        </div>
+          {unsynced.length > 0 && (
+            <div className={hasSynced ? 'pt-4' : ''}>
+              {hasSynced && <div className="text-[11px] uppercase tracking-[0.2em] text-muted text-center mb-2">无时间戳歌词</div>}
+              {unsynced.map((x) => (
+                <div key={x.k} className="text-center px-3 py-2" style={{ fontSize: 21, lineHeight: 1.35, color: 'rgba(255,255,255,0.82)' }}>{x.l}</div>
+              ))}
+            </div>
+          )}        </div>
       )}
 
       {editing && (

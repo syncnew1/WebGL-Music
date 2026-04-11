@@ -2,8 +2,8 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { Converter } from 'opencc-js/t2cn'
 import { supabase } from '../lib/supabaseClient'
 
-export type Song = { id: string; title: string; artist?: string; album?: string; tags?: string[]; url?: string; storage_path?: string; cover_storage_path?: string; cover_url?: string; lyrics?: string }
-export type Playlist = { id: string; name: string; description?: string; is_public?: boolean; songs: string[] }
+export type Song = { id: string; title: string; artist?: string; album?: string; tags?: string[]; url?: string; storage_path?: string; cover_storage_path?: string; cover_url?: string; lyrics?: string; owner_id?: string }
+export type Playlist = { id: string; name: string; description?: string; is_public?: boolean; owner_id?: string; songs: string[] }
 
 type DataCtx = {
   songs: Song[]
@@ -77,7 +77,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const { data: playlistRows } = await supabase
       .from('playlists')
-      .select('id, name, description, is_public')
+      .select('id, name, description, is_public, owner_id')
       .order('created_at', { ascending: false })
 
     const sb = supabase
@@ -103,6 +103,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       name: p.name,
       description: p.description,
       is_public: p.is_public,
+      owner_id: p.owner_id,
       songs: [],
     }))
     if (remotePlaylists.length > 0) setPlaylists(remotePlaylists)
@@ -260,7 +261,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const createPlaylist = async (p: Omit<Playlist, 'id' | 'songs'>) => {
     if (!supabase) {
       const id = `pl-${Date.now()}`
-      setPlaylists(prev => [{ id, songs: [], ...p }, ...prev])
+      setPlaylists(prev => [{ id, songs: [], owner_id: 'local-user', ...p }, ...prev])
       return id
     }
 
@@ -270,12 +271,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase
       .from('playlists')
       .insert({ name: p.name, description: p.description, is_public: p.is_public })
-      .select()
+      .select('id, name, description, is_public, owner_id')
       .single()
 
     if (error || !data) throw new Error(error?.message || '创建歌单失败')
 
-    setPlaylists(prev => [{ id: data.id, name: data.name, description: data.description, is_public: data.is_public, songs: [] }, ...prev])
+    setPlaylists(prev => [{ id: data.id, name: data.name, description: data.description, is_public: data.is_public, owner_id: data.owner_id || user.id, songs: [] }, ...prev])
     return data.id
   }
 
@@ -285,6 +286,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (target.name === '已点赞歌曲') throw new Error('“已点赞歌曲”不能删除')
 
     if (supabase) {
+      const user = (await supabase.auth.getUser()).data.user
+      if (!user) throw new Error('请先登录')
+      if (target.owner_id && target.owner_id !== user.id) throw new Error('仅歌单拥有者可删除')
       await supabase.from('playlist_songs').delete().eq('playlist_id', playlistId)
       const { error } = await supabase.from('playlists').delete().eq('id', playlistId)
       if (error) throw new Error(error.message)
@@ -294,19 +298,42 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }
 
   const addToPlaylist = async (playlistId: string, songId: string) => {
-    if (supabase) await supabase.from('playlist_songs').insert({ playlist_id: playlistId, song_id: songId })
+    const target = playlists.find(p => p.id === playlistId)
+    if (!target) throw new Error('歌单不存在')
+    if (target.name === '已点赞歌曲') {
+      // 允许点赞歌单由系统逻辑写入
+    }
+    if (supabase) {
+      const user = (await supabase.auth.getUser()).data.user
+      if (!user) throw new Error('请先登录')
+      if (target.owner_id && target.owner_id !== user.id) throw new Error('仅歌单拥有者可编辑')
+      await supabase.from('playlist_songs').insert({ playlist_id: playlistId, song_id: songId })
+    }
     setPlaylists(prev => prev.map(pl => (pl.id === playlistId ? { ...pl, songs: pl.songs.includes(songId) ? pl.songs : [...pl.songs, songId] } : pl)))
   }
 
   const removeFromPlaylist = async (playlistId: string, songId: string) => {
-    if (supabase) await supabase.from('playlist_songs').delete().eq('playlist_id', playlistId).eq('song_id', songId)
+    const target = playlists.find(p => p.id === playlistId)
+    if (!target) throw new Error('歌单不存在')
+    if (supabase) {
+      const user = (await supabase.auth.getUser()).data.user
+      if (!user) throw new Error('请先登录')
+      if (target.owner_id && target.owner_id !== user.id) throw new Error('仅歌单拥有者可编辑')
+      await supabase.from('playlist_songs').delete().eq('playlist_id', playlistId).eq('song_id', songId)
+    }
     setPlaylists(prev => prev.map(pl => (pl.id === playlistId ? { ...pl, songs: pl.songs.filter(id => id !== songId) } : pl)))
   }
 
   const ensureLikedPlaylist = async () => {
     const name = '已点赞歌曲'
     const existing = playlists.find(p => p.name === name)
-    if (existing) return existing.id
+    if (existing) {
+      if (supabase && existing.is_public) {
+        await supabase.from('playlists').update({ is_public: false }).eq('id', existing.id)
+      }
+      setPlaylists(prev => prev.map(p => (p.id === existing.id ? { ...p, is_public: false } : p)))
+      return existing.id
+    }
     return await createPlaylist({ name, description: '你点赞的所有歌曲', is_public: false })
   }
 
@@ -394,51 +421,111 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!song) throw new Error('歌曲不存在')
     const title = (song.title || '').trim()
     const artist = (song.artist || '').trim()
+    const album = (song.album || '').trim()
     if (!title) throw new Error('歌曲标题为空，无法自动补全')
 
     const fillCover = opts?.cover ?? true
     const fillLyrics = opts?.lyrics ?? true
 
-    let foundLyrics = false
-    let foundCover = false
-    let lyricsText = ''
+    if (!fillLyrics && !fillCover) {
+      return { cover: false, lyrics: false }
+    }
+
+    let foundLyrics = !!song.lyrics
+    let foundCover = !!song.cover_url || !!song.cover_storage_path
+    let lyricsText = song.lyrics || ''
     let coverUrl = song.cover_url || ''
     let coverStoragePath = song.cover_storage_path || ''
+    let lyricsError = ''
+    let coverError = ''
+
+    const fetchWithTimeout = async (url: string, timeoutMs = 8000) => {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), timeoutMs)
+      try {
+        return await fetch(url, { signal: ctrl.signal })
+      } finally {
+        clearTimeout(t)
+      }
+    }
 
     if (fillLyrics) {
       try {
-        const q = new URLSearchParams({ track_name: title, artist_name: artist }).toString()
-        const resp = await fetch(`https://lrclib.net/api/search?${q}`)
+        const q = new URLSearchParams({ title, album, artist }).toString()
+        const resp = await fetchWithTimeout(`/lrc/lyrics?${q}`, 15000)
         if (resp.ok) {
-          const arr = await resp.json()
-          const preferred = pickPreferredLyrics(Array.isArray(arr) ? arr : [])
-          if (preferred) {
-            lyricsText = t2s(preferred)
+          const text = (await resp.text()).trim()
+          if (text) {
+            lyricsText = t2s(text)
             foundLyrics = true
+          } else {
+            lyricsError = '歌词接口返回为空'
+          }
+        } else {
+          lyricsError = `歌词接口请求失败 (${resp.status})`
+        }
+
+        if (!foundLyrics) {
+          const adv = await fetchWithTimeout(`/lrc/jsonapi?${q}`, 15000)
+          if (adv.ok) {
+            const arr = await adv.json()
+            const pick = (Array.isArray(arr) ? arr : []).find((x: any) => typeof x?.lyrics === 'string' && x.lyrics.trim().length > 0)
+            if (pick?.lyrics) {
+              lyricsText = t2s(pick.lyrics)
+              foundLyrics = true
+              lyricsError = ''
+            }
+          } else {
+            lyricsError = lyricsError || `歌词接口请求失败 (${adv.status})`
           }
         }
-      } catch {}
+      } catch (e: any) {
+        lyricsError = e?.name === 'AbortError' ? '歌词接口超时' : '歌词接口请求失败'
+      }
     }
 
     if (fillCover) {
       try {
-        const term = encodeURIComponent(`${title} ${artist}`.trim())
-        const resp = await fetch(`https://itunes.apple.com/search?term=${term}&entity=song&limit=1`)
+        const q = new URLSearchParams({ title, album, artist }).toString()
+        const resp = await fetchWithTimeout(`/lrc/cover/music?${q}`, 12000)
         if (resp.ok) {
           const j = await resp.json()
-          const item = Array.isArray(j?.results) ? j.results[0] : null
-          const art = item?.artworkUrl100 || item?.artworkUrl60
-          if (art && typeof art === 'string') {
-            coverUrl = art.replace('100x100bb', '600x600bb').replace('60x60bb', '600x600bb')
+          const img = j?.img
+          if (img && typeof img === 'string') {
+            coverUrl = img
             foundCover = true
             coverStoragePath = ''
+          } else {
+            coverError = '封面接口返回为空'
           }
+        } else {
+          coverError = `封面接口请求失败 (${resp.status})`
         }
-      } catch {}
+      } catch (e: any) {
+        coverError = e?.name === 'AbortError' ? '封面接口超时' : '封面接口请求失败'
+      }
+
+      if (!foundCover && (title || album || artist)) {
+        try {
+          const q = new URLSearchParams({ title, album, artist }).toString()
+          const resp = await fetchWithTimeout(`/lrc/cover/album?${q}`, 12000)
+          if (resp.ok) {
+            const j = await resp.json()
+            const img = j?.img
+            if (img && typeof img === 'string') {
+              coverUrl = img
+              foundCover = true
+              coverStoragePath = ''
+              coverError = ''
+            }
+          }
+        } catch {}
+      }
     }
 
     if (!foundLyrics && !foundCover) {
-      return { cover: false, lyrics: false }
+      const err = [lyricsError, coverError].filter(Boolean).join('；') || '未获取到歌词或封面'
+      throw new Error(err)
     }
 
     if (supabase) {

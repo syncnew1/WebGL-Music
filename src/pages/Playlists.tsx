@@ -96,7 +96,7 @@ export default function Playlists() {
               <div className="text-xs text-muted">{pl.description || '暂无描述'}</div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Link className="btn" to={`/playlists/${pl.id}`}>查看详情</Link>
-                {pl.name !== '已点赞歌曲' && <Button onClick={() => onDelete(pl)}>删除</Button>}
+                {pl.name !== '已点赞歌曲' && !!user && pl.owner_id === user.id && <Button onClick={() => onDelete(pl)}>删除</Button>}
               </div>
             </Card>
           )

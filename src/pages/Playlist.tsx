@@ -5,9 +5,11 @@ import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import CoverImage from '../components/CoverImage'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../providers/AuthProvider'
 
 export default function Playlist(){
   const { id } = useParams()
+  const { user } = useAuth() as any
   const { playlists, songs, addToPlaylist, removeFromPlaylist } = useData()
   const pl = playlists.find(p => p.id === id)
   const [shareLink, setShareLink] = React.useState<string>('')
@@ -16,6 +18,7 @@ export default function Playlist(){
   if (!pl) return <div className="status-chip status-chip--danger">歌单不存在</div>
 
   const makePublic = async (v: boolean) => {
+    if (!canEdit || pl.name === '已点赞歌曲') return
     if (supabase && pl) {
       await supabase.from('playlists').update({ is_public: v }).eq('id', pl.id)
     }
@@ -38,6 +41,7 @@ export default function Playlist(){
 
   const songObjs = pl.songs.map(sid => songs.find(s => s.id === sid)).filter(Boolean) as any[]
   const candidateSongs = songs.filter(s => !pl.songs.includes(s.id))
+  const canEdit = !!user && (((pl as any).owner_id && (pl as any).owner_id === user.id) || !(pl as any).owner_id)
 
   return (
     <div className="grid gap-5">
@@ -53,11 +57,13 @@ export default function Playlist(){
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="status-chip" style={{ cursor: 'pointer' }}>
-              <input type="checkbox" checked={pl.is_public} onChange={e => makePublic(e.target.checked)} />公开
-            </label>
-            <Button onClick={createShare}>生成私密分享链接</Button>
-            {shareLink && (
+            {canEdit && pl.name !== '已点赞歌曲' && (
+              <label className="status-chip" style={{ cursor: 'pointer' }}>
+                <input type="checkbox" checked={pl.is_public} onChange={e => makePublic(e.target.checked)} />公开
+              </label>
+            )}
+            {canEdit && <Button onClick={createShare}>生成私密分享链接</Button>}
+            {shareLink && canEdit && (
               <Button onClick={async () => {
                 try {
                   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -96,7 +102,7 @@ export default function Playlist(){
             <CoverImage path={s.cover_storage_path} url={s.cover_url} className="card-cover" />
             <div className="font-semibold">{s.title}</div>
             <div className="text-xs text-muted">{s.artist ?? ''}</div>
-            <Button onClick={() => removeFromPlaylist(pl.id, s.id)}>移除</Button>
+            {canEdit && <Button onClick={() => removeFromPlaylist(pl.id, s.id)}>移除</Button>}
           </Card>
         ))}
         {songObjs.length === 0 && <div className="status-chip">歌单里还没有歌曲</div>}
@@ -112,7 +118,7 @@ export default function Playlist(){
             <CoverImage path={s.cover_storage_path} url={s.cover_url} className="card-cover" />
             <div className="font-semibold">{s.title}</div>
             <div className="text-xs text-muted">{s.artist ?? ''}</div>
-            <Button onClick={() => addToPlaylist(pl.id, s.id)}>添加</Button>
+            {canEdit && <Button onClick={() => addToPlaylist(pl.id, s.id)}>添加</Button>}
           </Card>
         ))}
         {candidateSongs.length === 0 && <div className="status-chip">没有可添加的新歌曲</div>}

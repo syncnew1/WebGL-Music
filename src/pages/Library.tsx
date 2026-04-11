@@ -12,7 +12,11 @@ type FillOpt = { cover: boolean; lyrics: boolean }
 
 export default function Library() {
   const { songs, uploadSong, removeSong, autoFillSongMeta } = useData() as any
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const canFill = !!user && (
+    user?.id === '18d821ab-b967-4d21-849f-1e88c7785683' ||
+    (user?.email || '') === '2031134102@qq.com'
+  )
   const { play, addToQueue } = usePlayer()
   const fileRef = useRef<HTMLInputElement | null>(null)
 
@@ -20,14 +24,20 @@ export default function Library() {
   const [artist, setArtist] = useState('')
   const [album, setAlbum] = useState('')
   const [msg, setMsg] = useState('')
+  const showMsg = msg && (!(msg.startsWith('补全') && !canFill)) ? msg : ''
   const [busy, setBusy] = useState(false)
 
   const [uploadOpen, setUploadOpen] = useState(false)
   const [fillOpen, setFillOpen] = useState(false)
+  const [fillMsg, setFillMsg] = useState('')
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [fillOpts, setFillOpts] = useState<Record<string, FillOpt>>({})
   const [batchBusy, setBatchBusy] = useState(false)
+  const [fillProgress, setFillProgress] = useState({ total: 0, done: 0 })
+  const [coverOverride, setCoverOverride] = useState(false)
+  const [lyricsOverride, setLyricsOverride] = useState(false)
+  const batchCancelRef = useRef(false)
 
   const songIds = useMemo(() => songs.map((s: any) => s.id), [songs])
 
@@ -56,22 +66,85 @@ export default function Library() {
   }
 
   const runBatchFill = async () => {
+    if (!canFill) {
+      const tip = '仅 test01 账号允许补全封面/歌词'
+      setMsg(tip)
+      setFillMsg(tip)
+      return
+    }
     const ids = Array.from(selectedIds)
-    if (ids.length === 0) return setMsg('请先选择至少一首歌曲')
+    if (ids.length === 0) {
+      const tip = '请先选择至少一首歌曲'
+      setMsg(tip)
+      setFillMsg(tip)
+      return
+    }
+    const songMap = new Map(songs.map((s: any) => [s.id, s]))
+    const needsAny = ids.some(id => {
+      const s = songMap.get(id)
+      if (!s) return false
+      const hasCover = !!s.cover_url || !!s.cover_storage_path
+      const hasLyrics = !!(s.lyrics && s.lyrics.trim().length > 0)
+      return (!hasCover && !coverOverride) || (!hasLyrics && !lyricsOverride) || coverOverride || lyricsOverride
+    })
+    if (!needsAny) {
+      const tip = '所选歌曲已包含封面/歌词，无需补全'
+      setMsg(tip)
+      setFillMsg(tip)
+      return
+    }
+    const opts = (id: string) => {
+      const s = songMap.get(id)
+      const hasCover = !!s?.cover_url || !!s?.cover_storage_path
+      const hasLyrics = !!(s?.lyrics && s?.lyrics.trim().length > 0)
+      return {
+        ...ensureOpt(id),
+        cover: coverOverride ? true : !hasCover,
+        lyrics: lyricsOverride ? true : !hasLyrics,
+      }
+    }
+
     setBatchBusy(true)
+    batchCancelRef.current = false
+    setFillProgress({ total: ids.length, done: 0 })
+    setFillMsg('正在补全...')
+    const concurrency = 3
     let ok = 0
     let fail = 0
-    try {
-      for (const id of ids) {
+    const failed: { id: string; title: string; reason: string }[] = []
+    const queue = [...ids]
+
+    const runOne = async () => {
+      while (queue.length > 0 && !batchCancelRef.current) {
+        const id = queue.shift()!
+        const song = songs.find((s: any) => s.id === id)
+        const title = song?.title || id
         try {
-          await autoFillSongMeta(id, ensureOpt(id))
-          ok++
-        } catch {
+          const res = await autoFillSongMeta(id, opts(id))
+          if (res?.cover || res?.lyrics) ok++
+          else {
+            fail++
+            failed.push({ id, title, reason: '未获取到歌词或封面' })
+          }
+        } catch (e: any) {
           fail++
+          failed.push({ id, title, reason: e?.message || '补全失败' })
+        } finally {
+          setFillProgress(p => ({ ...p, done: Math.min(p.total, p.done + 1) }))
         }
       }
-      setMsg(`补全完成：成功 ${ok} 首，失败 ${fail} 首`)
-      setFillOpen(false)
+    }
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, runOne))
+      const summary = `补全完成：成功 ${ok} 首，失败 ${fail} 首`
+      setMsg(summary)
+      setFillMsg(summary)
+      if (failed.length > 0) {
+        console.warn('补全失败列表', failed)
+      }
+      if (fail === 0 && !batchCancelRef.current) setFillOpen(false)
+      if (!batchCancelRef.current) setSelectedIds(new Set())
     } finally {
       setBatchBusy(false)
     }
@@ -113,8 +186,8 @@ export default function Library() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" onClick={() => setUploadOpen(true)}>上传音乐</Button>
-            <Button onClick={() => setFillOpen(true)}>补全封面/歌词</Button>
-            {msg && <div className="status-chip">{msg}</div>}
+            {canFill && <Button onClick={() => setFillOpen(true)}>补全封面/歌词</Button>}
+            {showMsg && <div className="status-chip">{showMsg}</div>}
           </div>
         </div>
       </section>
@@ -165,10 +238,31 @@ export default function Library() {
               <Button onClick={() => setFillOpen(false)} disabled={batchBusy}>关闭</Button>
             </div>
             <div className="flex items-center gap-2 flex-wrap mb-2">
-              <Button onClick={toggleAll}>{selectedIds.size === songIds.length ? '取消全选' : '全选'}</Button>
+              <Button onClick={toggleAll} disabled={batchBusy}>{selectedIds.size === songIds.length ? '取消全选' : '全选'}</Button>
               <div className="status-chip">已选 {selectedIds.size} / {songIds.length}</div>
+              <div className="flex items-center gap-2 text-xs">
+                <label className="flex items-center gap-1"><input type="checkbox" checked={coverOverride} onChange={e => setCoverOverride(e.target.checked)} />覆盖封面</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={lyricsOverride} onChange={e => setLyricsOverride(e.target.checked)} />覆盖歌词</label>
+              </div>
               <Button variant="primary" onClick={runBatchFill} disabled={batchBusy}>{batchBusy ? '补全中...' : '开始补全选中歌曲'}</Button>
+              {batchBusy && <Button onClick={() => { batchCancelRef.current = true; setFillMsg('已终止补全'); }} variant="ghost">终止</Button>}
+              {fillMsg && <div className="status-chip">{fillMsg}</div>}
             </div>
+            {batchBusy && fillProgress.total > 0 && (
+              <div className="mb-3">
+                <div className="text-xs text-muted mb-1">进度 {fillProgress.done} / {fillProgress.total}</div>
+                <div className="h-2 rounded-full" style={{ background: 'var(--surface-3)', overflow: 'hidden' }}>
+                  <div
+                    className="h-full"
+                    style={{
+                      width: `${Math.round((fillProgress.done / fillProgress.total) * 100)}%`,
+                      background: 'linear-gradient(90deg, var(--accent), #6ab7ff)',
+                      transition: 'width 220ms ease',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="grid gap-2 max-h-[420px] overflow-auto pr-1">
               {songs.map((s: any) => {
                 const opt = ensureOpt(s.id)
