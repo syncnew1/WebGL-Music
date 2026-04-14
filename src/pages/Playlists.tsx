@@ -8,7 +8,7 @@ import { useAuth } from '../providers/AuthProvider'
 import { isSupabaseConfigured } from '../lib/supabaseClient'
 
 export default function Playlists() {
-  const { playlists, songs, createPlaylist, removePlaylist } = useData() as any
+  const { playlists, songs, createPlaylist, removePlaylist, musicSource, fetchNeteasePlaylists } = useData() as any
   const { user } = useAuth() as any
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
@@ -16,6 +16,15 @@ export default function Playlists() {
   const [msg, setMsg] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [neteasePlaylists, setNeteasePlaylists] = useState<any[]>([])
+
+  React.useEffect(() => {
+    if (musicSource !== 'netease') {
+      setNeteasePlaylists([])
+      return
+    }
+    fetchNeteasePlaylists().then(setNeteasePlaylists).catch(() => setNeteasePlaylists([]))
+  }, [musicSource])
 
   const onCreate = async () => {
     if (!name.trim()) return
@@ -56,24 +65,27 @@ export default function Playlists() {
               <h2 className="page-title">歌单宇宙</h2>
               <p className="page-subtitle">把收藏、主题和情绪整理成独立歌单，让封面拼贴、入口操作与管理流程保持统一视觉秩序。</p>
             </div>
-            <div className={`status-chip ${playlists.length > 0 ? 'status-chip--accent' : ''}`}>共 {playlists.length} 个歌单</div>
+            <div className={`status-chip ${(musicSource === 'netease' ? neteasePlaylists.length : playlists.length) > 0 ? 'status-chip--accent' : ''}`}>共 {musicSource === 'netease' ? neteasePlaylists.length : playlists.length} 个歌单</div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="primary" onClick={() => setCreateOpen(true)}>创建歌单</Button>
+            {musicSource === 'cloud' && <Button variant="primary" onClick={() => setCreateOpen(true)}>创建歌单</Button>}
+            {musicSource === 'netease' && <div className="status-chip">网易云歌单为只读</div>}
             {msg && <div className="status-chip">{msg}</div>}
           </div>
         </div>
       </section>
 
       <div className="card-grid">
-        {playlists.map((pl: any) => {
+        {(musicSource === 'netease' ? neteasePlaylists : playlists).map((pl: any) => {
           const latestSongIds = [...(pl.songs || [])].slice(-4).reverse()
           const latestSongs = latestSongIds.map((sid: string) => songs.find((s: any) => s.id === sid)).filter(Boolean)
 
           return (
             <Card key={pl.id}>
               <div className="card-cover" style={{ overflow: 'hidden' }}>
-                {latestSongs.length > 0 ? (
+                {musicSource === 'netease' && pl.cover_url ? (
+                  <CoverImage url={pl.cover_url} className="w-full h-full" />
+                ) : latestSongs.length > 0 ? (
                   <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2 }}>
                     {latestSongs.map((s: any, i: number) => (
                       <div key={`${pl.id}-${s.id}-${i}`} style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 4 }}>
@@ -94,9 +106,10 @@ export default function Playlists() {
               </div>
               <div className="font-semibold">{pl.name}</div>
               <div className="text-xs text-muted">{pl.description || '暂无描述'}</div>
+              {musicSource === 'netease' && typeof pl.trackCount === 'number' && <div className="text-xs text-muted">共 {pl.trackCount} 首</div>}
               <div className="flex items-center gap-2 flex-wrap">
                 <Link className="btn" to={`/playlists/${pl.id}`}>查看详情</Link>
-                {pl.name !== '已点赞歌曲' && !!user && pl.owner_id === user.id && <Button onClick={() => onDelete(pl)}>删除</Button>}
+                {musicSource === 'cloud' && pl.name !== '已点赞歌曲' && !!user && pl.owner_id === user.id && <Button onClick={() => onDelete(pl)}>删除</Button>}
               </div>
             </Card>
           )

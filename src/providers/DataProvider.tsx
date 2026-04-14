@@ -3,12 +3,25 @@ import { Converter } from 'opencc-js/t2cn'
 import { supabase } from '../lib/supabaseClient'
 
 export type Song = { id: string; title: string; artist?: string; album?: string; tags?: string[]; url?: string; storage_path?: string; cover_storage_path?: string; cover_url?: string; lyrics?: string; owner_id?: string }
+export type MusicSource = 'cloud' | 'netease'
+export type NeteaseProfile = { nickname: string; avatarUrl?: string }
 export type Playlist = { id: string; name: string; description?: string; is_public?: boolean; owner_id?: string; songs: string[] }
 
 type DataCtx = {
   songs: Song[]
   playlists: Playlist[]
   history: Song[]
+  musicSource: MusicSource
+  setMusicSource: (s: MusicSource) => void
+  neteaseProfile: NeteaseProfile | null
+  neteaseQrImage: string
+  neteaseQrStatus: string
+  startNeteaseQrLogin: () => Promise<void>
+  checkNeteaseQrLogin: () => Promise<void>
+  logoutNetease: () => void
+  fetchNeteaseLyricBySongId: (id: string) => Promise<string>
+  fetchNeteasePlaylists: () => Promise<any[]>
+  fetchNeteasePlaylistTracks: (playlistId: string) => Promise<Song[]>
   dataSource: 'loading' | 'cloud' | 'local'
   cloudLatencyMs: number | null
   reloadCloudData: () => Promise<void>
@@ -52,6 +65,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<Song[]>([])
   const [dataSource, setDataSource] = useState<'loading' | 'cloud' | 'local'>('loading')
   const [cloudLatencyMs, setCloudLatencyMs] = useState<number | null>(null)
+  const [musicSource, setMusicSourceState] = useState<MusicSource>(() => {
+    try {
+      const v = localStorage.getItem('wm:music-source')
+      return v === 'netease' ? 'netease' : 'cloud'
+    } catch {
+      return 'cloud'
+    }
+  })
+  const [neteaseProfile, setNeteaseProfile] = useState<NeteaseProfile | null>(null)
+  const [neteaseQrImage, setNeteaseQrImage] = useState('')
+  const [neteaseQrStatus, setNeteaseQrStatus] = useState('未登录')
+  const [neteasePolling, setNeteasePolling] = useState(false)
+  const neteaseQrKeyRef = useRef('')
+  const neteaseUidRef = useRef<number | null>(null)
+  const neteaseSongUrlCache = useRef<Map<string, { url: string; exp: number }>>(new Map())
 
   useEffect(() => {
     try { localStorage.setItem('wm:songs', JSON.stringify(songs)) } catch {}
@@ -60,6 +88,223 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try { localStorage.setItem('wm:playlists', JSON.stringify(playlists)) } catch {}
   }, [playlists])
+
+  useEffect(() => {
+    try { localStorage.setItem('wm:music-source', musicSource) } catch {}
+  }, [musicSource])
+
+  const setMusicSource = (s: MusicSource) => {
+    setMusicSourceState(s)
+    if (s === 'cloud') {
+      void loadCloudData().catch(() => {})
+    } else {
+      void fetchNeteaseHotSongs()
+    }
+  }
+
+  const neteaseBase = (import.meta.env.VITE_NETEASE_API_BASE || '').replace(/\/$/, '')
+  const hasNetease = neteaseBase.length > 0
+
+  const neteaseFetch = (path: string) =>
+    fetch(`${neteaseBase}${path}${path.includes('?') ? '&' : '?'}timestamp=${Date.now()}`, {
+      credentials: 'include',
+    })
+
+  const normalizeNeteaseCover = (u?: string) => (u || '').replace(/^http:\/\//i, 'https://')
+
+  const syncNeteaseProfile = async () => {
+    if (!hasNetease) return
+    try {
+      const r = await neteaseFetch('/login/status')
+      if (!r.ok) return
+      const j = await r.json()
+      const p = j?.data?.profile
+      if (p?.userId) {
+        neteaseUidRef.current = Number(p.userId)
+        setNeteaseProfile({ nickname: p.nickname, avatarUrl: p.avatarUrl })
+        setNeteaseQrStatus('已登录')
+        setNeteaseQrImage('')
+      }
+    } catch {}
+  }
+
+  const startNeteaseQrLogin = async () => {
+    if (!hasNetease) throw new Error('未配置 VITE_NETEASE_API_BASE')
+    setNeteaseQrStatus('二维码生成中...')
+    const keyResp = await neteaseFetch('/login/qr/key')
+    if (!keyResp.ok) throw new Error('获取二维码 key 失败')
+    const keyJson = await keyResp.json()
+    const key = keyJson?.data?.unikey || ''
+    if (!key) throw new Error('二维码 key 无效')
+
+    const createResp = await neteaseFetch(`/login/qr/create?key=${encodeURIComponent(key)}&qrimg=true`)
+    if (!createResp.ok) throw new Error('生成二维码失败')
+    const createJson = await createResp.json()
+    const qr = createJson?.data?.qrimg || ''
+    if (!qr) throw new Error('二维码图片为空')
+
+    neteaseQrKeyRef.current = key
+    setNeteaseQrImage(qr)
+    setNeteaseQrStatus('请使用网易云音乐 App 扫码')
+    setNeteasePolling(true)
+  }
+
+  const checkNeteaseQrLogin = async () => {
+    if (!hasNetease) return
+    const key = neteaseQrKeyRef.current
+    if (!key) return
+    const resp = await neteaseFetch(`/login/qr/check?key=${encodeURIComponent(key)}`)
+    if (!resp.ok) return
+    const j = await resp.json()
+    const code = j?.code
+    if (code === 803) {
+      setNeteaseQrStatus('登录成功，正在刷新...')
+      setNeteasePolling(false)
+      setNeteaseQrImage('')
+      await syncNeteaseProfile()
+      window.setTimeout(() => {
+        window.location.reload()
+      }, 300)
+      return
+    }
+    if (code === 802) setNeteaseQrStatus('已扫码，请在手机确认')
+    else if (code === 801) setNeteaseQrStatus('等待扫码')
+    else if (code === 800) {
+      setNeteaseQrStatus('二维码已过期，请重新生成')
+      setNeteasePolling(false)
+    }
+  }
+
+  const logoutNetease = () => {
+    setNeteaseProfile(null)
+    setNeteaseQrImage('')
+    setNeteaseQrStatus('未登录')
+    setNeteasePolling(false)
+    neteaseQrKeyRef.current = ''
+    void neteaseFetch('/logout').catch(() => {})
+  }
+
+  const getNeteaseSongUrl = async (id: string) => {
+    if (!hasNetease || !id) return ''
+    const pureId = id.replace('netease-', '')
+    const cache = neteaseSongUrlCache.current.get(pureId)
+    if (cache && cache.exp > Date.now()) return cache.url
+    const resp = await neteaseFetch(`/song/url/v1?id=${encodeURIComponent(pureId)}&level=standard`)
+    if (!resp.ok) return ''
+    const j = await resp.json()
+    const url = j?.data?.[0]?.url || ''
+    if (url) neteaseSongUrlCache.current.set(pureId, { url, exp: Date.now() + 30 * 60 * 1000 })
+    return url
+  }
+
+  const fetchNeteasePlaylists = async () => {
+    if (!hasNetease) return []
+    let uid = neteaseUidRef.current
+    if (!uid) {
+      try {
+        const status = await neteaseFetch('/login/status')
+        if (status.ok) {
+          const j = await status.json()
+          const p = j?.data?.profile
+          if (p?.userId) {
+            uid = Number(p.userId)
+            neteaseUidRef.current = uid
+          }
+        }
+      } catch {}
+    }
+    if (!uid) return []
+
+    const resp = await neteaseFetch(`/user/playlist?uid=${encodeURIComponent(String(uid))}&limit=50`)
+    if (!resp.ok) return []
+    const j = await resp.json()
+    const rows = Array.isArray(j?.playlist) ? j.playlist : []
+    return rows.map((p: any) => ({
+      id: `netease-pl-${p.id}`,
+      rawId: String(p.id),
+      name: p.name || '未命名歌单',
+      description: p.description || '',
+      cover_url: normalizeNeteaseCover(p.coverImgUrl),
+      trackCount: Number(p.trackCount || 0),
+      source: 'netease',
+    }))
+  }
+
+  const fetchNeteasePlaylistTracks = async (playlistId: string) => {
+    if (!hasNetease || !playlistId) return []
+    const pureId = playlistId.replace('netease-pl-', '')
+    const resp = await neteaseFetch(`/playlist/track/all?id=${encodeURIComponent(pureId)}&limit=200`)
+    if (!resp.ok) return []
+    const j = await resp.json()
+    const rows = Array.isArray(j?.songs) ? j.songs : []
+    const mapped = rows.map((r: any) => toNeteaseSong(r))
+    setSongs(prev => {
+      const m = new Map(prev.map(s => [s.id, s]))
+      for (const s of mapped) m.set(s.id, { ...(m.get(s.id) || {}), ...s })
+      return Array.from(m.values())
+    })
+    return mapped
+  }
+
+  const fetchNeteaseLyricBySongId = async (id: string) => {
+    if (!hasNetease || !id) return ''
+    const pureId = id.replace('netease-', '')
+    const resp = await neteaseFetch(`/lyric?id=${encodeURIComponent(pureId)}`)
+    if (!resp.ok) return ''
+    const j = await resp.json()
+    const lrc = (j?.lrc?.lyric || '').trim()
+    const yrc = (j?.yrc?.lyric || '').trim()
+    const tlyric = (j?.tlyric?.lyric || '').trim()
+    return lrc || yrc || tlyric
+  }
+
+  const toNeteaseSong = (r: any): Song => ({
+    id: `netease-${r?.id || r?.song?.id}`,
+    title: r?.name || r?.song?.name || '',
+    artist: (r?.ar || r?.artists || r?.song?.ar || r?.song?.artists || []).map((x: any) => x?.name).filter(Boolean).join(' / '),
+    album: r?.al?.name || r?.album?.name || r?.song?.al?.name || r?.song?.album?.name || '',
+    cover_storage_path: undefined,
+    cover_url: normalizeNeteaseCover(r?.al?.picUrl || r?.album?.picUrl || r?.song?.al?.picUrl || r?.song?.album?.picUrl || r?.picUrl || r?.coverImgUrl || r?.song?.picUrl || r?.song?.coverImgUrl),
+    url: undefined,
+    tags: ['netease'],
+  })
+
+  const fetchNeteaseHotSongs = async () => {
+    if (!hasNetease) return
+    try {
+      const r = await neteaseFetch('/top/song?type=0')
+      if (r.ok) {
+        const j = await r.json()
+        const rows = Array.isArray(j?.data) ? j.data : []
+        if (rows.length > 0) {
+          setSongs(rows.slice(0, 30).map(toNeteaseSong))
+          return
+        }
+      }
+    } catch {}
+
+    try {
+      const r = await neteaseFetch('/personalized/newsong?limit=30')
+      if (!r.ok) return
+      const j = await r.json()
+      const rows = (Array.isArray(j?.result) ? j.result : [])
+      if (rows.length > 0) setSongs(rows.slice(0, 30).map(toNeteaseSong))
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (musicSource !== 'netease') return
+    void syncNeteaseProfile()
+    void fetchNeteaseHotSongs()
+  }, [musicSource])
+
+  useEffect(() => {
+    if (!neteasePolling) return
+    const timer = window.setInterval(() => {
+      void checkNeteaseQrLogin()
+    }, 1800)
+    return () => window.clearInterval(timer)
+  }, [neteasePolling])
 
   const loadCloudData = async () => {
     if (!supabase) {
@@ -351,6 +596,48 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }
 
   const searchSongs = async (q: string) => {
+    if (musicSource === 'netease' && hasNetease) {
+      const qq = q.trim() || '热门'
+      const resp = await neteaseFetch(`/search?keywords=${encodeURIComponent(qq)}&type=1&limit=30`)
+      if (!resp.ok) return []
+      const j = await resp.json()
+      const rows = j?.result?.songs || []
+      let mapped = rows.map((r: any) => toNeteaseSong(r))
+
+      const missingIds = mapped
+        .filter((s: Song) => !s.cover_url)
+        .map((s: Song) => s.id.replace('netease-', ''))
+        .filter(Boolean)
+
+      if (missingIds.length > 0) {
+        try {
+          const detailResp = await neteaseFetch(`/song/detail?ids=${encodeURIComponent(missingIds.slice(0, 60).join(','))}`)
+          if (detailResp.ok) {
+            const detailJson = await detailResp.json()
+            const detailRows = Array.isArray(detailJson?.songs) ? detailJson.songs : []
+            const coverMap = new Map<string, string>()
+            for (const d of detailRows) {
+              const id = String(d?.id || '')
+              const cover = normalizeNeteaseCover(d?.al?.picUrl || d?.album?.picUrl || d?.picUrl)
+              if (id && cover) coverMap.set(id, cover)
+            }
+            mapped = mapped.map((s: Song) => {
+              if (s.cover_url) return s
+              const cover = coverMap.get(s.id.replace('netease-', ''))
+              return cover ? { ...s, cover_url: cover } : s
+            })
+          }
+        } catch {}
+      }
+
+      setSongs(prev => {
+        const m = new Map(prev.map(s => [s.id, s]))
+        for (const s of mapped) m.set(s.id, { ...(m.get(s.id) || {}), ...s })
+        return Array.from(m.values())
+      })
+      return mapped
+    }
+
     if (supabase) {
       const { data } = await supabase.from('songs').select('*').or(`title.ilike.%${q}%,artist.ilike.%${q}%,album.ilike.%${q}%`)
       return (data || []).map(r => ({ id: r.id, title: r.title, artist: r.artist, album: r.album, storage_path: r.storage_path, tags: r.tags || [], cover_storage_path: r.cover_storage_path, cover_url: r.cover_url, lyrics: r.lyrics }))
@@ -375,45 +662,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }
 
   const updateLyrics = async (id: string, lyrics: string) => {
-    if (!supabase || !id) return
+    if (!id) return
     const normalizedLyrics = t2s(lyrics || '')
+
+    if (id.startsWith('netease-') || !supabase) {
+      setSongs(prev => {
+        const idx = prev.findIndex(s => s.id === id)
+        if (idx >= 0) return prev.map(s => (s.id === id ? { ...s, lyrics: normalizedLyrics } : s))
+        return [{ id, title: id.replace('netease-', ''), lyrics: normalizedLyrics, tags: ['netease'] }, ...prev]
+      })
+      return
+    }
+
     const { error } = await supabase.from('songs').update({ lyrics: normalizedLyrics }).eq('id', id)
     if (!error) setSongs(prev => prev.map(s => (s.id === id ? { ...s, lyrics: normalizedLyrics } : s)))
-  }
-
-  const traditionalHintChars = new Set(Array.from('們這個為來時會後發說對於與讓還點開關種麼裡愛聽樂畫體雲無線國專業號風實現應用設計系統資料庫廣場車門燈變當氣萬東葉龍圖書層數據網頁聲音視頻藝術'))
-  const scoreSimplifiedPreference = (text: string) => {
-    let traditionalHits = 0
-    let simplifiedHits = 0
-    for (const ch of text) {
-      if (traditionalHintChars.has(ch)) traditionalHits += 1
-      if (/^[\u4e00-\u9fff]$/.test(ch) && !traditionalHintChars.has(ch)) simplifiedHits += 1
-    }
-    return simplifiedHits - traditionalHits * 4
-  }
-
-  const pickPreferredLyrics = (items: any[]) => {
-    const candidates = (Array.isArray(items) ? items : [])
-      .map(item => {
-        const lyrics = item?.syncedLyrics || item?.plainLyrics
-        if (!lyrics || typeof lyrics !== 'string') return null
-        const text = lyrics.replace(/\[[^\]]+\]/g, '')
-        return {
-          lyrics,
-          score: scoreSimplifiedPreference(text),
-          hasSynced: typeof item?.syncedLyrics === 'string' && item.syncedLyrics.length > 0,
-          length: text.trim().length,
-        }
-      })
-      .filter(Boolean) as { lyrics: string; score: number; hasSynced: boolean; length: number }[]
-
-    candidates.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score
-      if (a.hasSynced !== b.hasSynced) return Number(b.hasSynced) - Number(a.hasSynced)
-      return b.length - a.length
-    })
-
-    return candidates[0]?.lyrics || ''
   }
 
   const autoFillSongMeta = async (id: string, opts?: { cover?: boolean; lyrics?: boolean }) => {
@@ -450,37 +712,51 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (fillLyrics) {
-      try {
-        const q = new URLSearchParams({ title, album, artist }).toString()
-        const resp = await fetchWithTimeout(`/lrc/lyrics?${q}`, 15000)
-        if (resp.ok) {
-          const text = (await resp.text()).trim()
-          if (text) {
-            lyricsText = t2s(text)
+      if (musicSource === 'netease' && hasNetease && id.startsWith('netease-')) {
+        try {
+          const lyric = await fetchNeteaseLyricBySongId(id)
+          if (lyric) {
+            lyricsText = t2s(lyric)
             foundLyrics = true
           } else {
             lyricsError = '歌词接口返回为空'
           }
-        } else {
-          lyricsError = `歌词接口请求失败 (${resp.status})`
+        } catch (e: any) {
+          lyricsError = e?.name === 'AbortError' ? '歌词接口超时' : '歌词接口请求失败'
         }
-
-        if (!foundLyrics) {
-          const adv = await fetchWithTimeout(`/lrc/jsonapi?${q}`, 15000)
-          if (adv.ok) {
-            const arr = await adv.json()
-            const pick = (Array.isArray(arr) ? arr : []).find((x: any) => typeof x?.lyrics === 'string' && x.lyrics.trim().length > 0)
-            if (pick?.lyrics) {
-              lyricsText = t2s(pick.lyrics)
+      } else {
+        try {
+          const q = new URLSearchParams({ title, album, artist }).toString()
+          const resp = await fetchWithTimeout(`/lrc/lyrics?${q}`, 15000)
+          if (resp.ok) {
+            const text = (await resp.text()).trim()
+            if (text) {
+              lyricsText = t2s(text)
               foundLyrics = true
-              lyricsError = ''
+            } else {
+              lyricsError = '歌词接口返回为空'
             }
           } else {
-            lyricsError = lyricsError || `歌词接口请求失败 (${adv.status})`
+            lyricsError = `歌词接口请求失败 (${resp.status})`
           }
+
+          if (!foundLyrics) {
+            const adv = await fetchWithTimeout(`/lrc/jsonapi?${q}`, 15000)
+            if (adv.ok) {
+              const arr = await adv.json()
+              const pick = (Array.isArray(arr) ? arr : []).find((x: any) => typeof x?.lyrics === 'string' && x.lyrics.trim().length > 0)
+              if (pick?.lyrics) {
+                lyricsText = t2s(pick.lyrics)
+                foundLyrics = true
+                lyricsError = ''
+              }
+            } else {
+              lyricsError = lyricsError || `歌词接口请求失败 (${adv.status})`
+            }
+          }
+        } catch (e: any) {
+          lyricsError = e?.name === 'AbortError' ? '歌词接口超时' : '歌词接口请求失败'
         }
-      } catch (e: any) {
-        lyricsError = e?.name === 'AbortError' ? '歌词接口超时' : '歌词接口请求失败'
       }
     }
 
@@ -528,7 +804,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       throw new Error(err)
     }
 
-    if (supabase) {
+    if (supabase && !id.startsWith('netease-')) {
       const patch: any = {}
       if (foundLyrics) patch.lyrics = lyricsText
       if (foundCover) {
@@ -553,8 +829,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }
 
   const fetchHistory = async (page: number, pageSize: number) => {
+    if (musicSource === 'netease' && hasNetease) {
+      const start = page * pageSize
+      const list = songs.slice(start, start + pageSize)
+      return list.map((s, i) => ({
+        id: `netease-h-${s.id}-${start + i}`,
+        song_id: s.id,
+        song: s,
+        played_at: new Date(Date.now() - i * 60 * 1000).toISOString(),
+        played_ms: 0,
+        source: 'netease',
+      }))
+    }
+
     if (!supabase) {
-      return history.slice(page * pageSize, (page + 1) * pageSize).map((s, i) => ({ id: `${s.id}-${i}`, song: s, played_at: new Date().toISOString(), played_ms: 0 }))
+      return history.slice(page * pageSize, (page + 1) * pageSize).map((s, i) => ({ id: `${s.id}-${i}`, song: s, song_id: s.id, played_at: new Date().toISOString(), played_ms: 0, source: 'local' }))
     }
     const user = (await supabase.auth.getUser()).data.user
     if (!user) return []
@@ -566,7 +855,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       .eq('user_id', user.id)
       .order('played_at', { ascending: false })
       .range(from, to)
-    return data || []
+    return (data || []).map((x: any) => ({ ...x, source: 'cloud' }))
   }
 
   const value: DataCtx = useMemo(
@@ -574,6 +863,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       songs,
       playlists,
       history,
+      musicSource,
+      setMusicSource,
+      neteaseProfile,
+      neteaseQrImage,
+      neteaseQrStatus,
+      startNeteaseQrLogin,
+      checkNeteaseQrLogin,
+      logoutNetease,
+      getNeteaseSongUrl,
+      fetchNeteaseLyricBySongId,
+      fetchNeteasePlaylists,
+      fetchNeteasePlaylistTracks,
       dataSource,
       cloudLatencyMs,
       reloadCloudData: loadCloudData,
@@ -593,7 +894,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       isSongLiked,
       toggleLikeSong,
     }),
-    [songs, playlists, history, dataSource, cloudLatencyMs]
+    [songs, playlists, history, musicSource, dataSource, cloudLatencyMs]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

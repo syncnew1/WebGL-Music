@@ -9,13 +9,14 @@ import Button from '../components/ui/Button'
 
 export default function Profile() {
   const { user, profile, updateProfile, signOut } = useAuth() as any
-  const { playlists, songs, fetchHistory, getCoverUrl } = useData() as any
+  const { playlists, songs, fetchHistory, getCoverUrl, musicSource, fetchNeteasePlaylists } = useData() as any
 
   const [items, setItems] = React.useState<any[]>([])
   const [covers, setCovers] = React.useState<Record<string, string>>({})
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const [page, setPage] = React.useState(0)
+  const [neteasePlaylists, setNeteasePlaylists] = React.useState<any[]>([])
   const [editOpen, setEditOpen] = React.useState(false)
   const [uname, setUname] = React.useState('')
   const [avatar, setAvatar] = React.useState('')
@@ -29,7 +30,7 @@ export default function Profile() {
       try {
         setLoading(true)
         const data = await fetchHistory(page, pageSize)
-        const withSong = (data || []).map((h: any) => ({ ...h, song: songs.find((s: any) => s.id === h.song_id) }))
+        const withSong = (data || []).map((h: any) => ({ ...h, song: h.song || songs.find((s: any) => s.id === h.song_id) }))
         withSong.sort((a: any, b: any) => new Date(b.played_at).getTime() - new Date(a.played_at).getTime())
         setItems(withSong)
 
@@ -39,13 +40,13 @@ export default function Profile() {
           const p = h.song?.cover_storage_path
           const u0 = h.song?.cover_url
           if (sid && !covers[sid]) {
-            if (p) {
+            if (u0) {
+              setCovers(prev => ({ ...prev, [sid]: u0 }))
+            } else if (p) {
               try {
                 const u = await getCoverUrl(p)
                 if (u) setCovers(prev => ({ ...prev, [sid]: u }))
               } catch {}
-            } else if (u0) {
-              setCovers(prev => ({ ...prev, [sid]: u0 }))
             }
           }
         }
@@ -56,10 +57,16 @@ export default function Profile() {
         setLoading(false)
       }
     })()
-  }, [page, songs])
+  }, [page, songs, musicSource])
 
   React.useEffect(() => {
-    const raw = profile?.avatar_url || ''
+    if (musicSource !== 'netease') {
+      setNeteasePlaylists([])
+      return
+    }
+    fetchNeteasePlaylists().then(setNeteasePlaylists).catch(() => setNeteasePlaylists([]))
+  }, [musicSource])
+
     if (!raw) {
       setAvatarPreview('')
       return
@@ -112,7 +119,7 @@ export default function Profile() {
 
       <div className="stat-grid">
         <div className="stat-card"><div className="stat-label">歌曲数量</div><div className="stat-value">{songs.length}</div></div>
-        <div className="stat-card"><div className="stat-label">歌单数量</div><div className="stat-value">{playlists.length}</div></div>
+        <div className="stat-card"><div className="stat-label">歌单数量</div><div className="stat-value">{musicSource === 'netease' ? neteasePlaylists.length : playlists.length}</div></div>
         <div className="stat-card"><div className="stat-label">本页历史</div><div className="stat-value">{items.length}</div></div>
       </div>
 
@@ -121,14 +128,16 @@ export default function Profile() {
         <h3 className="page-title" style={{ fontSize: 24 }}>我的歌单</h3>
       </div>
       <div className="card-grid">
-        {playlists.map((pl: any) => {
+        {(musicSource === 'netease' ? neteasePlaylists : playlists).map((pl: any) => {
           const latestSongIds = [...(pl.songs || [])].slice(-4).reverse()
           const latestSongs = latestSongIds.map((sid: string) => songs.find((s: any) => s.id === sid)).filter(Boolean)
           return (
             <Link key={pl.id} to={`/playlists/${pl.id}`} className="block">
               <Card>
                 <div className="card-cover" style={{ overflow: 'hidden' }}>
-                  {latestSongs.length > 0 ? (
+                  {musicSource === 'netease' && pl.cover_url ? (
+                    <CoverImage url={pl.cover_url} className="w-full h-full" />
+                  ) : latestSongs.length > 0 ? (
                     <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2 }}>
                       {latestSongs.map((s: any, i: number) => (
                         <div key={`${pl.id}-${s.id}-${i}`} style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 4 }}>
@@ -160,7 +169,8 @@ export default function Profile() {
             <div className="flex items-center gap-3">
               <div style={{ width: 80, height: 80, borderRadius: 10, background: 'linear-gradient(135deg, var(--surface-2), var(--surface-3))', backgroundSize: 'cover', backgroundPosition: 'center', backgroundImage: h.song?.id && covers[h.song.id] ? `url(${covers[h.song.id]})` : undefined }} />
               <div>
-                <div className="font-semibold" style={{ fontSize: 14 }}>{h.song?.title || h.song_id}</div>
+                <div className="font-semibold" style={{ fontSize: 14 }}>{h.song?.title || '未知歌曲'}</div>
+                <div className="text-xs text-muted">{h.song?.artist || ''}</div>
                 <div className="text-xs text-muted">{new Date(h.played_at).toLocaleString()}</div>
               </div>
             </div>

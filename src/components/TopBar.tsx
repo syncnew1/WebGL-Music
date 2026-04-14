@@ -1,16 +1,23 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useAuth } from '../providers/AuthProvider'
+import { useData } from '../providers/DataProvider'
 import { useNavigate } from 'react-router-dom'
-import { MdSearch, MdPerson, MdLogin } from 'react-icons/md'
+import { MdPerson, MdLogin } from 'react-icons/md'
 import SupabaseStatus from './SupabaseStatus'
 
 export default function TopBar() {
   const { user, profile } = useAuth()
+  const {
+    musicSource,
+    setMusicSource,
+    neteaseProfile,
+    neteaseQrImage,
+    neteaseQrStatus,
+    startNeteaseQrLogin,
+    checkNeteaseQrLogin,
+    logoutNetease,
+  } = useData()
   const nav = useNavigate()
-  const [q, setQ] = useState('')
-  const [focused, setFocused] = useState(false)
-
-  const goSearch = () => { if (q.trim()) nav('/search', { state: { q } }) }
 
   const displayName = user
     ? (profile?.username || user?.user_metadata?.username || (user?.email || '').split('@')[0])
@@ -18,32 +25,51 @@ export default function TopBar() {
 
   return (
     <header className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%' }}>
-        <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ minWidth: 0, maxWidth: 540, width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: focused ? 'var(--surface-2)' : 'rgba(20,28,46,0.88)', border: `1px solid ${focused ? 'var(--border-2)' : 'var(--border)'}`, borderRadius: 'var(--radius-full)', padding: '0 14px', height: 42, transition: 'background 150ms, border-color 150ms, box-shadow 150ms', boxShadow: focused ? '0 0 0 3px var(--accent-glow)' : 'inset 0 1px 0 rgba(255,255,255,0.02)' }}>
-            <MdSearch size={18} style={{ color: focused ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0, transition: 'color 150ms' }} />
-            <input
-              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit' }}
-              placeholder="搜索歌曲、歌手、专辑"
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              onKeyDown={e => { if (e.key === 'Enter') goSearch() }}
-            />
-            {q && (
-              <button
-                onClick={() => setQ('')}
-                style={{ color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, transition: 'color 120ms' }}
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-              >×</button>
-            )}
-          </div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, width: '100%' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>WebGL Music</div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <SupabaseStatus />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, border: '1px solid var(--border)', background: 'rgba(20,28,46,0.72)' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>音源</span>
+            <button
+              onClick={() => setMusicSource('cloud')}
+              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 999, background: musicSource === 'cloud' ? 'var(--accent)' : 'transparent', color: musicSource === 'cloud' ? '#04150f' : 'var(--text-muted)' }}
+            >
+              云端
+            </button>
+            <button
+              onClick={() => setMusicSource('netease')}
+              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 999, background: musicSource === 'netease' ? 'var(--accent)' : 'transparent', color: musicSource === 'netease' ? '#04150f' : 'var(--text-muted)' }}
+            >
+              网易云
+            </button>
+          </div>
+
+          {musicSource === 'netease' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 999, border: '1px solid var(--border)', background: 'rgba(20,28,46,0.72)' }}>
+              {neteaseProfile ? (
+                <>
+                  <span style={{ fontSize: 11, color: 'var(--text)' }}>网易云：{neteaseProfile.nickname}</span>
+                  <button onClick={logoutNetease} style={{ fontSize: 11, color: 'var(--text-muted)' }}>退出</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => void startNeteaseQrLogin()} style={{ fontSize: 11, color: 'var(--text)' }}>扫码登录</button>
+                  {neteaseQrImage && <button onClick={() => void checkNeteaseQrLogin()} style={{ fontSize: 11, color: 'var(--text-muted)' }}>检查状态</button>}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{neteaseQrStatus}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {musicSource === 'netease' && neteaseQrImage && !neteaseProfile && (
+            <div style={{ position: 'fixed', right: 24, top: 76, zIndex: 60, width: 180, padding: 10, borderRadius: 12, border: '1px solid var(--border)', background: 'rgba(9,13,24,0.96)', boxShadow: 'var(--shadow)' }}>
+              <img src={neteaseQrImage} alt="网易云扫码登录" style={{ width: '100%', borderRadius: 8 }} />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>{neteaseQrStatus}</div>
+            </div>
+          )}
+
+          {musicSource === 'cloud' && <SupabaseStatus />}
           <div className="user-chip" onClick={() => nav(user ? '/profile' : '/login')}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: user ? 'linear-gradient(135deg, var(--accent) 0%, var(--rose) 100%)' : 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: user ? '0 0 16px rgba(49,194,124,0.22)' : 'none' }}>
               {user

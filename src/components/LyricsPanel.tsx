@@ -7,7 +7,7 @@ type LyricLine = { t: number; l: string; k: string }
 
 export default function LyricsPanel({ open, onClose, inline = false }: { open: boolean; onClose: () => void; inline?: boolean }) {
   const { current, progress, duration, seek, play, isPlaying } = usePlayer() as any
-  const { songs, updateLyrics } = useData() as any
+  const { songs, updateLyrics, fetchNeteaseLyricBySongId } = useData() as any
   const [text, setText] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
@@ -18,11 +18,25 @@ export default function LyricsPanel({ open, onClose, inline = false }: { open: b
   const [estimatedLineCount, setEstimatedLineCount] = React.useState(0)
   const [estimatedHeight, setEstimatedHeight] = React.useState(0)
 
+  const fetchedLyricRef = React.useRef<Record<string, boolean>>({})
+
   React.useEffect(() => {
     const curId = (current as any)?.id
     const found = songs?.find((s: any) => s.id === curId)
-    setText(found?.lyrics || '')
+    const nextText = found?.lyrics || ''
+    setText(prev => (prev === nextText ? prev : nextText))
     setEditing(false)
+
+    if (!curId || !String(curId).startsWith('netease-')) return
+    if ((found?.lyrics || '').trim()) return
+    if (fetchedLyricRef.current[curId]) return
+
+    fetchedLyricRef.current[curId] = true
+    fetchNeteaseLyricBySongId(curId).then((lyric: string) => {
+      if (!lyric) return
+      setText(prev => (prev === lyric ? prev : lyric))
+      void updateLyrics(curId, lyric)
+    }).catch(() => {})
   }, [songs, (current as any)?.id])
 
   React.useEffect(() => {

@@ -13,11 +13,13 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import FilenameTool from './pages/FilenameTool'
 import BatchUpload from './pages/BatchUpload'
+import Gallery3D from './pages/Gallery3D'
 const InsightDashboard = lazy(() => import('./components/insight/InsightDashboard'))
 import { usePlayer } from './providers/PlayerProvider'
 import LyricsPanel from './components/LyricsPanel'
 import { useLayout } from './providers/LayoutProvider'
 import Button from './components/ui/Button'
+import FloatingAIAssistant from './components/FloatingAIAssistant'
 
 export default function App(){
   const { rightOpen, rightMode, closeRight, queue, current, centerOpen, play } = usePlayer()
@@ -49,6 +51,7 @@ export default function App(){
           <Route path="/signup" element={<Signup />} />
           <Route path="/tools/filename" element={<FilenameTool />} />
           <Route path="/tools/batch-upload" element={<BatchUpload />} />
+          <Route path="/gallery-3d" element={<Gallery3D />} />
         </Routes>
       </main>
 
@@ -120,6 +123,7 @@ export default function App(){
       </div>
 
       <PlayerControls />
+      <FloatingAIAssistant />
     </div>
   )
 }

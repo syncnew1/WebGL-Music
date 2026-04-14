@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useData } from './DataProvider'
 
 type Mode = 'repeat-one' | 'repeat-all' | 'shuffle'
 type Track = { id: string; title: string; artist?: string; url?: string; storage_path?: string }
@@ -40,11 +41,15 @@ type PlayerCtx = {
   closeCenter: () => void
   limiterEnabled?: boolean
   setLimiterEnabled?: (on: boolean) => void
+  smartQueueEnabled: boolean
+  toggleSmartQueue: () => void
 }
 
 const Ctx = createContext<PlayerCtx | null>(null)
 
 export function PlayerProvider({ children }: { children: React.ReactNode }){
+  const { songs, getNeteaseSongUrl } = useData()
+  const neteaseBase = (import.meta.env.VITE_NETEASE_API_BASE || '').replace(/\/$/, '')
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [volume, setVolumeState] = useState(0.8)
@@ -68,6 +73,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
   const [muted, setMuted] = useState(false)
   const prevVolRef = useRef<number>(0.8)
   const [limiterEnabled, setLimiter] = useState(false)
+  const [smartQueueEnabled, setSmartQueueEnabled] = useState(true)
 
   const currentRef = useRef<Track | null>(null)
   const queueRef = useRef<Track[]>([])
@@ -249,14 +255,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
       audio.currentTime = 0
 
       ;(async () => {
-        if (!t.url && !t.storage_path) {
+        let resolvedUrl = t.url
+        if (!resolvedUrl && t.id.startsWith('netease-') && neteaseBase) {
+          try {
+            resolvedUrl = await getNeteaseSongUrl(t.id)
+          } catch {}
+        }
+
+        if (!resolvedUrl && !t.storage_path) {
           setPlaybackError('该歌曲缺少可用音频地址，请重新上传')
           return
         }
         const candidates: string[] = []
         const storageUrl = await resolveSourceFromStorage(t.storage_path)
         if (storageUrl) candidates.push(storageUrl)
-        if (t.url) candidates.push(t.url)
+        if (resolvedUrl) candidates.push(resolvedUrl)
 
         const uniq = Array.from(new Set(candidates.filter(Boolean)))
         for (const src of uniq) {
@@ -349,6 +362,40 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
     })
   }
 
+  const toggleSmartQueue = () => setSmartQueueEnabled(v => !v)
+
+  useEffect(() => {
+    if (!smartQueueEnabled) return
+    const q = queueRef.current
+    if (q.length > 1) return
+    if (!currentRef.current) return
+
+    const cur = currentRef.current
+    const candidates = songs
+      .filter(s => s.id !== cur.id)
+      .filter(s => !q.some(item => item.id === s.id))
+
+    const sameArtist = candidates.filter(s => !!cur.artist && s.artist === cur.artist)
+    const pool = sameArtist.length > 0 ? sameArtist : candidates
+    if (pool.length === 0) return
+
+    const pick = pool.slice(0, 12).sort(() => Math.random() - 0.5).slice(0, 5)
+    const smart = pick.map(s => ({
+      id: s.id,
+      title: s.title,
+      artist: s.artist,
+      url: s.url,
+      storage_path: s.storage_path,
+    }))
+
+    setQueue(prev => {
+      const known = new Set(prev.map(x => x.id))
+      const append = smart.filter(x => !known.has(x.id))
+      if (append.length === 0) return prev
+      return [...prev, ...append]
+    })
+  }, [songs, current, queue, smartQueueEnabled])
+
   const openRight = (m: 'visualizer' | 'queue' | 'lyrics') => {
     if (rightOpen && rightMode === m) { setRightOpen(false); return }
     setRightMode(m); setRightOpen(true)
@@ -415,10 +462,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
     rightOpen, rightMode, setRightOpen, setRightMode, openRight, closeRight,
     centerOpen, openCenter, closeCenter,
     limiterEnabled, setLimiterEnabled,
+    smartQueueEnabled, toggleSmartQueue,
   }), [
     isPlaying, volume, muted, mode, current, queue,
     progress, duration, analyser, liked, playbackError,
-    rightOpen, rightMode, centerOpen, limiterEnabled,
+    rightOpen, rightMode, centerOpen, limiterEnabled, smartQueueEnabled,
   ])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

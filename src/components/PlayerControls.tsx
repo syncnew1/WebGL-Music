@@ -1,7 +1,7 @@
 import React from 'react'
 import { usePlayer } from '../providers/PlayerProvider'
 import { FaStepBackward as FaPrev, FaStepForward as FaNext, FaPlay, FaPause, FaRandom, FaHeart } from 'react-icons/fa'
-import { MdRepeat, MdRepeatOne, MdQueueMusic, MdLyrics, MdGraphicEq } from 'react-icons/md'
+import { MdRepeat, MdRepeatOne, MdQueueMusic, MdLyrics, MdGraphicEq, MdAutoAwesome } from 'react-icons/md'
 import CoverImage from './CoverImage'
 import { useData } from '../providers/DataProvider'
 import Tooltip from './ui/Tooltip'
@@ -16,6 +16,7 @@ export default function PlayerControls(){
     playbackError,
     rightOpen, rightMode, openRight,
     centerOpen, openCenter,
+    smartQueueEnabled, toggleSmartQueue,
   } = usePlayer()
   const { songs, isSongLiked, toggleLikeSong } = useData()
 
@@ -96,6 +97,9 @@ export default function PlayerControls(){
       </div>
 
       <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end' }}>
+        <Tooltip label={smartQueueEnabled ? '智能队列：开启' : '智能队列：关闭'}>
+          <button className="btn-circle" style={{ color: smartQueueEnabled ? 'var(--accent)' : 'var(--text-muted)', fontSize:18 }} onClick={toggleSmartQueue}><MdAutoAwesome /></button>
+        </Tooltip>
         <Tooltip label="可视化">
           <button className="btn-circle" style={{ color: centerOpen ? 'var(--accent)' : 'var(--text-muted)', fontSize:20 }} onClick={openCenter}><MdGraphicEq /></button>
         </Tooltip>

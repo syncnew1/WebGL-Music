@@ -1,7 +1,7 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { useLayout } from '../providers/LayoutProvider'
-import { MdHome, MdLibraryMusic, MdQueueMusic, MdPerson, MdSearch, MdChevronLeft, MdChevronRight, MdBuildCircle } from 'react-icons/md'
+import { MdHome, MdLibraryMusic, MdQueueMusic, MdPerson, MdSearch, MdChevronLeft, MdChevronRight, MdBuildCircle, MdViewInAr } from 'react-icons/md'
 
 const Logo = () => (
   <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
@@ -76,6 +76,11 @@ export default function NavSidebar() {
         <NavLink to="/tools/batch-upload" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
           <MdBuildCircle size={20} />
           <span className="label">批量上传</span>
+        </NavLink>
+
+        <NavLink to="/gallery-3d" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <MdViewInAr size={20} />
+          <span className="label">3D 画廊</span>
         </NavLink>
       </div>
 
