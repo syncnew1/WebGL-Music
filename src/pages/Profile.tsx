@@ -67,6 +67,8 @@ export default function Profile() {
     fetchNeteasePlaylists().then(setNeteasePlaylists).catch(() => setNeteasePlaylists([]))
   }, [musicSource])
 
+  React.useEffect(() => {
+    const raw = (avatar || profile?.avatar_url || '').trim()
     if (!raw) {
       setAvatarPreview('')
       return
@@ -82,7 +84,7 @@ export default function Profile() {
     supabase.storage.from('covers').createSignedUrl(raw, 60 * 60 * 24)
       .then(({ data }) => setAvatarPreview(data?.signedUrl || ''))
       .catch(() => setAvatarPreview(''))
-  }, [profile?.avatar_url])
+  }, [avatar, profile?.avatar_url])
 
   const nick = user ? (profile?.username || user?.user_metadata?.username || (user?.email || '').split('@')[0]) : ''
   const headerAvatar = avatarPreview || (/^https?:\/\//i.test(avatar) ? avatar : '')
