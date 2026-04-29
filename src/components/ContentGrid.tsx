@@ -7,6 +7,28 @@ import { usePlayer } from '../providers/PlayerProvider'
 import { toTrack } from '../lib/trackUtils'
 import type { Song } from '../providers/DataProvider'
 
+const getSongDisplayLimit = () => {
+  if (typeof window === 'undefined') return 18
+  const width = window.innerWidth
+  if (width < 640) return 8
+  if (width < 1024) return 12
+  if (width < 1440) return 18
+  return 24
+}
+
+function useResponsiveSongLimit() {
+  const [limit, setLimit] = React.useState(getSongDisplayLimit)
+
+  React.useEffect(() => {
+    const updateLimit = () => setLimit(getSongDisplayLimit())
+    updateLimit()
+    window.addEventListener('resize', updateLimit, { passive: true })
+    return () => window.removeEventListener('resize', updateLimit)
+  }, [])
+
+  return limit
+}
+
 type CardProps = { song: Song; play: (s: Song) => void; addToQueue: (s: Song) => void }
 const SongCard = memo(function SongCard({ song, play, addToQueue }: CardProps) {
   const handlePlay = useCallback(() => {
@@ -35,7 +57,8 @@ const SongCard = memo(function SongCard({ song, play, addToQueue }: CardProps) {
 export default function ContentGrid(){
   const { songs } = useData()
   const { play, addToQueue } = usePlayer()
-  const list = useMemo(() => songs.slice(0, 12), [songs])
+  const displayLimit = useResponsiveSongLimit()
+  const list = useMemo(() => songs.slice(0, displayLimit), [songs, displayLimit])
 
   return (
     <div className="grid gap-4">
@@ -45,7 +68,7 @@ export default function ContentGrid(){
             <div className="page-kicker" style={{ marginBottom: 6 }}>Featured Picks</div>
             <div className="text-sm" style={{ color: 'var(--text-sub)' }}>选择一首开始播放，或先加入队列构建你的沉浸式流程。</div>
           </div>
-          <div className="status-chip">Top 12</div>
+          <div className="status-chip">已展示 {list.length} / {songs.length}</div>
         </div>
       </div>
 
