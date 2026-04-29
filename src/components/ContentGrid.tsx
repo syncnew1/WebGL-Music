@@ -10,10 +10,10 @@ import type { Song } from '../providers/DataProvider'
 const getSongDisplayLimit = () => {
   if (typeof window === 'undefined') return 18
   const width = window.innerWidth
-  if (width < 640) return 8
-  if (width < 1024) return 12
-  if (width < 1440) return 18
-  return 24
+  if (width < 640) return 16
+  if (width < 1024) return 24
+  if (width < 1440) return 36
+  return 48
 }
 
 function useResponsiveSongLimit() {
