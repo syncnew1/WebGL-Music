@@ -1,6 +1,7 @@
 import React from 'react'
 import { useParams } from 'react-router-dom'
 import { useData } from '../providers/DataProvider'
+import { usePlayer } from '../providers/PlayerProvider'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import CoverImage from '../components/CoverImage'
@@ -11,12 +12,14 @@ export default function Playlist() {
   const { id } = useParams()
   const { user } = useAuth() as any
   const { playlists, songs, addToPlaylist, removeFromPlaylist, fetchNeteasePlaylistTracks } = useData() as any
+  const { play, setQueue } = usePlayer()
 
   const pl = playlists.find((p: any) => p.id === id)
   const isNeteasePlaylist = !!id && id.startsWith('netease-pl-')
   const [shareLink, setShareLink] = React.useState<string>('')
   const [copied, setCopied] = React.useState(false)
   const [neteaseTracks, setNeteaseTracks] = React.useState<any[]>([])
+  const [descExpanded, setDescExpanded] = React.useState(false)
 
   React.useEffect(() => {
     if (!isNeteasePlaylist || !id) {
@@ -64,6 +67,34 @@ export default function Playlist() {
     setShareLink(`${location.origin}/playlists/${viewPl.id}?token=${token}`)
   }
 
+  const handlePlayAll = () => {
+    if (songObjs.length === 0) return
+    const tracks = songObjs.map((s: any) => ({
+      id: s.id,
+      title: s.title,
+      artist: s.artist,
+      url: s.url,
+      storage_path: s.storage_path,
+    }))
+    setQueue(tracks)
+    play(tracks[0])
+  }
+
+  const handlePlaySong = (s: any) => {
+    const tracks = songObjs.map((x: any) => ({
+      id: x.id,
+      title: x.title,
+      artist: x.artist,
+      url: x.url,
+      storage_path: x.storage_path,
+    }))
+    setQueue(tracks)
+    play({ id: s.id, title: s.title, artist: s.artist, url: s.url, storage_path: s.storage_path })
+  }
+
+  const description = viewPl.description || '这是一张用于沉浸式播放与收藏管理的歌单。'
+  const descNeedTruncate = description.length > 40
+
   return (
     <div className="grid gap-5">
       <section className="page-hero">
@@ -72,7 +103,18 @@ export default function Playlist() {
             <div className="page-heading">
               <div className="page-kicker">Playlist Detail</div>
               <h2 className="page-title">{viewPl.name}</h2>
-              <p className="page-subtitle">{viewPl.description || '这是一张用于沉浸式播放与收藏管理的歌单。'}</p>
+              <p
+                className="page-subtitle"
+                style={!descExpanded && descNeedTruncate ? { display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden', cursor: 'pointer' } : { cursor: 'pointer' }}
+                onClick={() => descNeedTruncate && setDescExpanded(v => !v)}
+              >
+                {description}
+                {descNeedTruncate && (
+                  <span style={{ color: 'var(--accent)', marginLeft: 6, fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {descExpanded ? '收起' : '查看详情'}
+                  </span>
+                )}
+              </p>
             </div>
             <div className={`status-chip ${isNeteasePlaylist ? 'status-chip--accent' : (viewPl.is_public ? 'status-chip--accent' : '')}`}>
               {isNeteasePlaylist ? '网易云歌单' : (viewPl.is_public ? '公开歌单' : '私有歌单')}
@@ -80,6 +122,9 @@ export default function Playlist() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="primary" onClick={handlePlayAll} disabled={songObjs.length === 0}>
+              ▶ 播放全部
+            </Button>
             {canEdit && viewPl.name !== '已点赞歌曲' && (
               <label className="status-chip" style={{ cursor: 'pointer' }}>
                 <input type="checkbox" checked={viewPl.is_public} onChange={e => makePublic(e.target.checked)} />公开
@@ -122,11 +167,11 @@ export default function Playlist() {
       </div>
       <div className="card-grid">
         {songObjs.map((s: any) => (
-          <Card key={s.id}>
+          <Card key={s.id} onClick={() => handlePlaySong(s)}>
             <CoverImage path={s.cover_storage_path} url={s.cover_url} className="card-cover" />
-            <div className="font-semibold">{s.title}</div>
-            <div className="text-xs text-muted">{s.artist ?? ''}</div>
-            {canEdit && <Button onClick={() => removeFromPlaylist(viewPl.id, s.id)}>移除</Button>}
+            <div className="font-semibold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+            <div className="text-xs text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.artist ?? ''}</div>
+            {canEdit && <Button onClick={(e: any) => { e.stopPropagation(); removeFromPlaylist(viewPl.id, s.id) }}>移除</Button>}
           </Card>
         ))}
         {songObjs.length === 0 && <div className="status-chip">歌单里还没有歌曲</div>}

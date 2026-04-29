@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useData } from '../providers/DataProvider'
+import { usePlayer } from '../providers/PlayerProvider'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import { Link } from 'react-router-dom'
@@ -8,7 +9,8 @@ import { useAuth } from '../providers/AuthProvider'
 import { isSupabaseConfigured } from '../lib/supabaseClient'
 
 export default function Playlists() {
-  const { playlists, songs, createPlaylist, removePlaylist, musicSource, fetchNeteasePlaylists } = useData() as any
+  const { playlists, songs, createPlaylist, removePlaylist, musicSource, fetchNeteasePlaylists, fetchNeteasePlaylistTracks } = useData() as any
+  const { play, setQueue } = usePlayer()
   const { user } = useAuth() as any
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
@@ -45,6 +47,8 @@ export default function Playlists() {
     }
   }
 
+  const [playingId, setPlayingId] = useState<string | null>(null)
+
   const onDelete = async (pl: any) => {
     if (!confirm(`确认删除歌单「${pl.name}」吗？`)) return
     try {
@@ -52,6 +56,44 @@ export default function Playlists() {
       setMsg('歌单已删除')
     } catch (e: any) {
       setMsg(e?.message || '删除失败')
+    }
+  }
+
+  const handlePlayPlaylist = async (pl: any, e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    setPlayingId(pl.id)
+    try {
+      let tracks: any[] = []
+      if (musicSource === 'netease') {
+        const fetched = await fetchNeteasePlaylistTracks(pl.id)
+        tracks = fetched.map((s: any) => ({
+          id: s.id,
+          title: s.title,
+          artist: s.artist,
+          url: s.url,
+          storage_path: s.storage_path,
+        }))
+      } else {
+        tracks = (pl.songs || [])
+          .map((sid: string) => songs.find((s: any) => s.id === sid))
+          .filter(Boolean)
+          .map((s: any) => ({
+            id: s.id,
+            title: s.title,
+            artist: s.artist,
+            url: s.url,
+            storage_path: s.storage_path,
+          }))
+      }
+      if (tracks.length > 0) {
+        setQueue(tracks)
+        play(tracks[0])
+      }
+    } catch (err) {
+      console.error('播放歌单失败:', err)
+    } finally {
+      setPlayingId(null)
     }
   }
 
@@ -104,10 +146,13 @@ export default function Playlists() {
                   <div className="w-full h-full" style={{ background: 'linear-gradient(135deg, var(--surface-2), var(--surface-3))' }} />
                 )}
               </div>
-              <div className="font-semibold">{pl.name}</div>
-              <div className="text-xs text-muted">{pl.description || '暂无描述'}</div>
+              <div className="font-semibold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl.name}</div>
+              <div className="text-xs text-muted" style={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pl.description || '暂无描述'}</div>
               {musicSource === 'netease' && typeof pl.trackCount === 'number' && <div className="text-xs text-muted">共 {pl.trackCount} 首</div>}
               <div className="flex items-center gap-2 flex-wrap">
+                <Button variant="primary" onClick={(e: React.MouseEvent) => handlePlayPlaylist(pl, e)} disabled={playingId === pl.id}>
+                  {playingId === pl.id ? '加载中...' : '▶ 播放'}
+                </Button>
                 <Link className="btn" to={`/playlists/${pl.id}`}>查看详情</Link>
                 {musicSource === 'cloud' && pl.name !== '已点赞歌曲' && !!user && pl.owner_id === user.id && <Button onClick={() => onDelete(pl)}>删除</Button>}
               </div>
