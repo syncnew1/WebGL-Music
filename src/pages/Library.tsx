@@ -88,6 +88,14 @@ export default function Library() {
     return n.length > 18 ? `${n.slice(0, 18)}…` : n
   }
 
+  const filteredSongs = useMemo(() => {
+    return songs.filter((s: any) => {
+      const hasCover = !!s.cover_url || !!s.cover_storage_path
+      const hasLyrics = !!(s.lyrics && s.lyrics.trim().length > 0)
+      return (!hasCover && !coverOverride) || (!hasLyrics && !lyricsOverride) || coverOverride || lyricsOverride
+    })
+  }, [songs, coverOverride, lyricsOverride])
+
   const ensureOpt = (id: string): FillOpt => fillOpts[id] || { cover: true, lyrics: true }
 
   const togglePick = (id: string) => {
@@ -100,7 +108,8 @@ export default function Library() {
   }
 
   const toggleAll = () => {
-    setSelectedIds(prev => (prev.size === songIds.length ? new Set() : new Set(songIds)))
+    const ids = filteredSongs.map((s: any) => s.id)
+    setSelectedIds(prev => (prev.size === ids.length ? new Set() : new Set(ids)))
   }
 
   const setSongOpt = (id: string, patch: Partial<FillOpt>) => {
@@ -150,6 +159,7 @@ export default function Library() {
     batchCancelRef.current = false
     setFillProgress({ total: ids.length, done: 0 })
     setFillMsg('正在补全...')
+    setFillFailed([])
     const concurrency = 3
     let ok = 0
     let fail = 0
@@ -188,9 +198,7 @@ export default function Library() {
       const summary = `补全完成：成功 ${ok} 首，失败 ${fail} 首`
       setMsg(summary)
       setFillMsg(summary)
-      if (failed.length > 0) {
-        console.warn('补全失败列表', failed)
-      }
+      setFillFailed(failed)
       if (fail === 0 && !batchCancelRef.current) setFillOpen(false)
       if (!batchCancelRef.current) setSelectedIds(new Set())
     } finally {
@@ -234,7 +242,7 @@ export default function Library() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" onClick={() => setUploadOpen(true)}>上传音乐</Button>
-            {canFill && <Button onClick={() => setFillOpen(true)}>补全封面/歌词</Button>}
+            {canFill && <Button onClick={() => { setFillOpen(true); setFillFailed([]) }}>补全封面/歌词</Button>}
             {showMsg && <div className="status-chip">{showMsg}</div>}
           </div>
         </div>
@@ -297,7 +305,7 @@ export default function Library() {
             </div>
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <Button onClick={toggleAll} disabled={batchBusy}>{selectedIds.size === songIds.length ? '取消全选' : '全选'}</Button>
-              <div className="status-chip">已选 {selectedIds.size} / {songIds.length}</div>
+              <div className="status-chip">已选 {selectedIds.size} / {filteredSongs.length}（需补全 {filteredSongs.length} 首）</div>
               <div className="flex items-center gap-2 text-xs">
                 <label className="flex items-center gap-1"><input type="checkbox" checked={coverOverride} onChange={e => setCoverOverride(e.target.checked)} />覆盖封面</label>
                 <label className="flex items-center gap-1"><input type="checkbox" checked={lyricsOverride} onChange={e => setLyricsOverride(e.target.checked)} />覆盖歌词</label>
@@ -322,7 +330,8 @@ export default function Library() {
               </div>
             )}
             <div className="grid gap-2 max-h-[420px] overflow-auto pr-1">
-              {songs.map((s: any) => {
+              {filteredSongs.length === 0 && <div className="text-xs text-muted text-center py-4">所有歌曲已包含封面和歌词</div>}
+              {filteredSongs.map((s: any) => {
                 const opt = ensureOpt(s.id)
                 const picked = selectedIds.has(s.id)
                 return (
@@ -339,6 +348,19 @@ export default function Library() {
                 )
               })}
             </div>
+            {fillFailed.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs font-semibold mb-2" style={{ color: 'var(--rose)' }}>失败列表 ({fillFailed.length} 首)</div>
+                <div className="grid gap-1 max-h-[180px] overflow-auto pr-1">
+                  {fillFailed.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs" style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.06)', borderRadius: 8 }}>
+                      <span className="truncate mr-2">{f.title}</span>
+                      <span className="text-muted shrink-0">{f.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
