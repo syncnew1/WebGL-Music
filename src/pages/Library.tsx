@@ -39,6 +39,7 @@ export default function Library() {
   const [fillProgress, setFillProgress] = useState({ total: 0, done: 0 })
   const [coverOverride, setCoverOverride] = useState(false)
   const [lyricsOverride, setLyricsOverride] = useState(false)
+  const [fillFailed, setFillFailed] = useState<{ id: string; title: string; reason: string }[]>([])
   const batchCancelRef = useRef(false)
 
   const [page, setPage] = useState(0)
