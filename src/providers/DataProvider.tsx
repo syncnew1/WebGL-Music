@@ -23,7 +23,8 @@ type DataCtx = {
   fetchNeteasePlaylists: () => Promise<any[]>
   fetchNeteasePlaylistTracks: (playlistId: string) => Promise<Song[]>
   loadMoreNeteaseSongs: () => Promise<void>
-  neteaseLoadingMore: boolean
+  fetchNeteasePage: (page: number) => Promise<boolean>
+  prefetchNeteasePage: (page: number) => Promise<void>
   neteaseHasMore: boolean
   dataSource: 'loading' | 'cloud' | 'local'
   cloudLatencyMs: number | null
@@ -83,14 +84,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const neteaseQrKeyRef = useRef('')
   const neteaseUidRef = useRef<number | null>(null)
   const neteaseSongUrlCache = useRef<Map<string, { url: string; exp: number }>>(new Map())
-  const [neteaseLoadingMore, setNeteaseLoadingMore] = useState(false)
   const [neteaseHasMore, setNeteaseHasMore] = useState(true)
+  const neteaseLoadingMoreRef = useRef(false)
   const neteaseChartIdsRef = useRef<number[]>([])
   const neteaseChartIdxRef = useRef(0)
   const neteaseChartOffsetRef = useRef(0)
+  const neteasePageCache = useRef<Map<number, Song[]>>(new Map())
 
+  // debounce localStorage 写入，避免大数组序列化阻塞主线程
+  const songsTimerRef = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => {
-    try { localStorage.setItem('wm:songs', JSON.stringify(songs)) } catch {}
+    clearTimeout(songsTimerRef.current)
+    songsTimerRef.current = setTimeout(() => {
+      try { localStorage.setItem('wm:songs', JSON.stringify(songs)) } catch {}
+    }, 2000)
+    return () => clearTimeout(songsTimerRef.current)
   }, [songs])
 
   useEffect(() => {
@@ -339,13 +347,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     neteaseChartIdsRef.current = []
     neteaseChartIdxRef.current = 0
     neteaseChartOffsetRef.current = 0
+    neteasePageCache.current.clear()
     setNeteaseHasMore(true)
 
-    // 获取歌单/排行榜 ID 列表
     const playlistIds = await fetchNeteasePlaylistIds()
     neteaseChartIdsRef.current = playlistIds
 
-    // 加载第一批：从第一个歌单获取前 30 首
+    // 加载第一批并缓存为第 0 页
     if (playlistIds.length > 0) {
       try {
         const r = await neteaseFetch(`/playlist/track/all?id=${playlistIds[0]}&limit=30&offset=0`)
@@ -353,22 +361,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           const j = await r.json()
           const rows = Array.isArray(j?.songs) ? j.songs : []
           if (rows.length > 0) {
-            setSongs(rows.map(toNeteaseSong))
+            const page0 = rows.map(toNeteaseSong)
+            neteasePageCache.current.set(0, page0)
             neteaseChartOffsetRef.current = 30
+            setSongs(page0)
             return
           }
         }
       } catch {}
     }
 
-    // 回退到热歌榜
+    // 回退
     try {
       const r = await neteaseFetch('/top/song?type=0')
       if (r.ok) {
         const j = await r.json()
         const rows = Array.isArray(j?.data) ? j.data : []
         if (rows.length > 0) {
-          setSongs(rows.slice(0, 30).map(toNeteaseSong))
+          const page0 = rows.slice(0, 30).map(toNeteaseSong)
+          neteasePageCache.current.set(0, page0)
+          setSongs(page0)
           return
         }
       }
@@ -379,24 +391,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!r.ok) return
       const j = await r.json()
       const rows = (Array.isArray(j?.result) ? j.result : [])
-      if (rows.length > 0) setSongs(rows.slice(0, 30).map(toNeteaseSong))
+      if (rows.length > 0) {
+        const page0 = rows.slice(0, 30).map(toNeteaseSong)
+        neteasePageCache.current.set(0, page0)
+        setSongs(page0)
+      }
     } catch {}
   }
 
   const loadMoreNeteaseSongs = async () => {
-    if (!hasNetease || neteaseLoadingMore || !neteaseHasMore) return
+    if (!hasNetease || neteaseLoadingMoreRef.current || !neteaseHasMore) return
     const chartIds = neteaseChartIdsRef.current
     if (chartIds.length === 0) {
-      // 没有歌单 ID，尝试重新获取
       const ids = await fetchNeteasePlaylistIds()
-      if (ids.length === 0) {
-        setNeteaseHasMore(false)
-        return
-      }
+      if (ids.length === 0) { setNeteaseHasMore(false); return }
       neteaseChartIdsRef.current = ids
     }
 
-    setNeteaseLoadingMore(true)
+    neteaseLoadingMoreRef.current = true
     try {
       const LIMIT = 30
       const ids = neteaseChartIdsRef.current
@@ -412,33 +424,56 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
         if (rows.length > 0) {
           const newSongs = rows.map(toNeteaseSong)
-          setSongs(prev => {
-            const m = new Map(prev.map(s => [s.id, s]))
-            for (const s of newSongs) m.set(s.id, s)
-            return Array.from(m.values())
-          })
           offset += rows.length
           neteaseChartOffsetRef.current = offset
-
-          // 如果本歌单还有更多，停在这里等下次加载
+          // 将新一批歌曲缓存到下一页
+          const nextPage = neteasePageCache.current.size
+          neteasePageCache.current.set(nextPage, newSongs)
           if (rows.length >= LIMIT) break
         }
 
-        // 当前歌单已穷尽，切换到下一个
         chartIdx++
         offset = 0
         neteaseChartIdxRef.current = chartIdx
         neteaseChartOffsetRef.current = 0
-
-        if (chartIdx >= ids.length) {
-          setNeteaseHasMore(false)
-          break
-        }
+        if (chartIdx >= ids.length) { setNeteaseHasMore(false); break }
       }
-    } catch {
-    } finally {
-      setNeteaseLoadingMore(false)
+    } catch {} finally {
+      neteaseLoadingMoreRef.current = false
     }
+  }
+
+  // 预加载：只缓存到内存，不触发 re-render
+  const prefetchNeteasePage = async (page: number): Promise<void> => {
+    if (!hasNetease || neteasePageCache.current.has(page)) return
+    if (neteasePageCache.current.size === 0) {
+      await fetchNeteaseHotSongs()
+    }
+    if (!neteasePageCache.current.has(page) && neteaseHasMore && !neteaseLoadingMoreRef.current) {
+      await loadMoreNeteaseSongs()
+    }
+  }
+
+  // 按页加载：从缓存取并更新 songs（触发 re-render）
+  const fetchNeteasePage = async (page: number): Promise<boolean> => {
+    if (!hasNetease) return false
+    if (neteasePageCache.current.size === 0) {
+      await fetchNeteaseHotSongs()
+    }
+    const cached = neteasePageCache.current.get(page)
+    if (cached) {
+      setSongs(cached)
+      return true
+    }
+    if (neteaseHasMore && !neteaseLoadingMoreRef.current) {
+      await loadMoreNeteaseSongs()
+      const retry = neteasePageCache.current.get(page)
+      if (retry) {
+        setSongs(retry)
+        return true
+      }
+    }
+    return false
   }
 
   useEffect(() => {
@@ -1025,7 +1060,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       fetchNeteasePlaylists,
       fetchNeteasePlaylistTracks,
       loadMoreNeteaseSongs,
-      neteaseLoadingMore,
+      fetchNeteasePage,
+      prefetchNeteasePage,
       neteaseHasMore,
       dataSource,
       cloudLatencyMs,
@@ -1046,7 +1082,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       isSongLiked,
       toggleLikeSong,
     }),
-    [songs, playlists, history, musicSource, dataSource, cloudLatencyMs, neteaseProfile, neteaseQrImage, neteaseQrStatus, neteaseLoadingMore, neteaseHasMore]
+    [songs, playlists, history, musicSource, dataSource, cloudLatencyMs, neteaseProfile, neteaseQrImage, neteaseQrStatus, neteaseHasMore]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useData } from '../providers/DataProvider'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
@@ -10,9 +10,11 @@ import { toTrack } from '../lib/trackUtils'
 
 type FillOpt = { cover: boolean; lyrics: boolean }
 
+const PAGE_SIZE = 30
+
 export default function Library() {
-  const { songs, uploadSong, removeSong, autoFillSongMeta, musicSource, loadMoreNeteaseSongs, neteaseLoadingMore, neteaseHasMore } = useData() as any
-  const { user, profile } = useAuth()
+  const { songs, uploadSong, removeSong, autoFillSongMeta, musicSource, fetchNeteasePage, prefetchNeteasePage, neteaseHasMore } = useData() as any
+  const { user } = useAuth()
   const canFill = !!user && (
     user?.id === '18d821ab-b967-4d21-849f-1e88c7785683' ||
     (user?.email || '') === '2031134102@qq.com'
@@ -39,54 +41,44 @@ export default function Library() {
   const [lyricsOverride, setLyricsOverride] = useState(false)
   const batchCancelRef = useRef(false)
 
-  const PAGE_SIZE = 30
-  const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
-  const sentinelRef = useRef<HTMLDivElement | null>(null)
-  const loadingRef = useRef(false)
-  const displayCountRef = useRef(PAGE_SIZE)
-  const songsLenRef = useRef(songs.length)
+  const [page, setPage] = useState(0)
+  const [loadingPage, setLoadingPage] = useState(false)
+  const isNetease = musicSource === 'netease'
 
-  useEffect(() => { displayCountRef.current = displayCount }, [displayCount])
-  useEffect(() => { songsLenRef.current = songs.length }, [songs.length])
+  // 云端：所有歌曲已加载，本地分页；网易云：songs 就是当前页
+  const displaySongs = isNetease ? songs : songs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = isNetease ? (neteaseHasMore ? page + 2 : page + 1) : Math.max(1, Math.ceil(songs.length / PAGE_SIZE))
 
-  // 歌曲列表变化时，重置 displayCount
+  // 预加载下一页到缓存（不触发 re-render）
   useEffect(() => {
-    setDisplayCount(prev => Math.min(prev, songs.length) || PAGE_SIZE)
-  }, [songs])
+    if (!isNetease || loadingPage) return
+    const timer = setTimeout(() => {
+      void prefetchNeteasePage(page + 1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [page, isNetease, loadingPage, prefetchNeteasePage])
 
-  // 哨兵可见时的回调
-  const handleSentinel = useCallback(() => {
-    if (loadingRef.current) return
-    loadingRef.current = true
-
-    const dc = displayCountRef.current
-    const sl = songsLenRef.current
-
-    // 展示更多已加载的歌曲
-    if (dc < sl) {
-      setDisplayCount(Math.min(dc + PAGE_SIZE, sl))
-      loadingRef.current = false
-      return
+  const goNext = async () => {
+    if (isNetease) {
+      setLoadingPage(true)
+      const ok = await fetchNeteasePage(page + 1)
+      setLoadingPage(false)
+      if (ok) setPage(p => p + 1)
+    } else if (page < totalPages - 1) {
+      setPage(page + 1)
     }
+  }
 
-    // 已展示完所有已加载歌曲，且网易云还有更多，从 API 加载
-    if (musicSource === 'netease' && neteaseHasMore && !neteaseLoadingMore) {
-      void loadMoreNeteaseSongs().finally(() => { loadingRef.current = false })
-    } else {
-      loadingRef.current = false
+  const goPrev = async () => {
+    if (page > 0) {
+      if (isNetease) {
+        setLoadingPage(true)
+        await fetchNeteasePage(page - 1)
+        setLoadingPage(false)
+      }
+      setPage(p => p - 1)
     }
-  }, [musicSource, neteaseHasMore, neteaseLoadingMore, loadMoreNeteaseSongs])
-
-  // IntersectionObserver：哨兵进入视口时触发加载
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el) return
-    const obs = new IntersectionObserver(entries => {
-      if (entries[0]?.isIntersecting) handleSentinel()
-    }, { rootMargin: '300px' })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [handleSentinel])
+  }
 
   const songIds = useMemo(() => songs.map((s: any) => s.id), [songs])
 
@@ -242,7 +234,7 @@ export default function Library() {
       </section>
 
       <div className="card-grid">
-        {songs.slice(0, displayCount).map((s: any) => (
+        {displaySongs.map((s: any) => (
           <Card key={s.id}>
             <CoverImage path={s.cover_storage_path} url={s.cover_url} className="card-cover" />
             <div className="font-semibold">{s.title}</div>
@@ -258,11 +250,16 @@ export default function Library() {
           </Card>
         ))}
       </div>
-      {(displayCount < songs.length || (musicSource === 'netease' && neteaseHasMore)) && (
-        <div ref={sentinelRef} style={{ textAlign: 'center', padding: '16px 0', fontSize: 12, color: 'var(--text-muted)' }}>
-          {neteaseLoadingMore ? '正在从网易云加载更多歌曲...' : `已展示 ${Math.min(displayCount, songs.length)} / ${songs.length} 首`}
-        </div>
-      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '12px 0' }}>
+        <Button onClick={() => void goPrev()} disabled={page === 0 || loadingPage}>上一页</Button>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          第 {page + 1} 页
+        </span>
+        <Button onClick={() => void goNext()} disabled={loadingPage || (!isNetease && page >= totalPages - 1) || (isNetease && !neteaseHasMore)}>
+          {loadingPage ? '加载中...' : '下一页'}
+        </Button>
+      </div>
 
       {uploadOpen && (
         <div className="modal-mask" onClick={() => !busy && setUploadOpen(false)}>
