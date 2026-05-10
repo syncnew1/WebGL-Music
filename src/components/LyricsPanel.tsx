@@ -1,12 +1,13 @@
 import React from 'react'
 import { prepare, layout } from '@chenglou/pretext'
-import { usePlayer } from '../providers/PlayerProvider'
+import { usePlayer, useProgress } from '../providers/PlayerProvider'
 import { useData } from '../providers/DataProvider'
 
 type LyricLine = { t: number; l: string; k: string }
 
 export default function LyricsPanel({ open, onClose, inline = false }: { open: boolean; onClose: () => void; inline?: boolean }) {
-  const { current, progress, duration, seek, play, isPlaying } = usePlayer() as any
+  const { current, seek, play, isPlaying } = usePlayer() as any
+  const { progress, duration } = useProgress()
   const { songs, updateLyrics, fetchNeteaseLyricBySongId } = useData() as any
   const [text, setText] = React.useState('')
   const [saving, setSaving] = React.useState(false)

@@ -46,6 +46,7 @@ type PlayerCtx = {
 }
 
 const Ctx = createContext<PlayerCtx | null>(null)
+const ProgressCtx = createContext<{ progress: number; duration: number; analyser: AnalyserNode | null }>({ progress: 0, duration: 0, analyser: null })
 
 export function PlayerProvider({ children }: { children: React.ReactNode }){
   const { songs, getNeteaseSongUrl } = useData()
@@ -465,11 +466,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }){
     smartQueueEnabled, toggleSmartQueue,
   }), [
     isPlaying, volume, muted, mode, current, queue,
-    progress, duration, analyser, liked, playbackError,
+    liked, playbackError,
     rightOpen, rightMode, centerOpen, limiterEnabled, smartQueueEnabled,
   ])
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  const progressValue = useMemo(() => ({ progress, duration, analyser }), [progress, duration, analyser])
+
+  return (
+    <Ctx.Provider value={value}>
+      <ProgressCtx.Provider value={progressValue}>
+        {children}
+      </ProgressCtx.Provider>
+    </Ctx.Provider>
+  )
 }
 
 export const usePlayer = () => {
@@ -477,3 +486,5 @@ export const usePlayer = () => {
   if (!ctx) throw new Error('usePlayer must be used within PlayerProvider')
   return ctx
 }
+
+export const useProgress = () => useContext(ProgressCtx)

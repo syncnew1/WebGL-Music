@@ -1,5 +1,5 @@
 import React from 'react'
-import { usePlayer } from '../providers/PlayerProvider'
+import { usePlayer, useProgress } from '../providers/PlayerProvider'
 import { FaStepBackward as FaPrev, FaStepForward as FaNext, FaPlay, FaPause, FaRandom, FaHeart } from 'react-icons/fa'
 import { MdRepeat, MdRepeatOne, MdQueueMusic, MdLyrics, MdGraphicEq, MdAutoAwesome } from 'react-icons/md'
 import CoverImage from './CoverImage'
@@ -10,7 +10,7 @@ import VolumeControl from './ui/VolumeControl'
 export default function PlayerControls(){
   const {
     isPlaying, play, pause, prev, next,
-    progress, duration, seek,
+    seek,
     volume, rampVolume, muted, toggleMute,
     current, mode, setMode,
     playbackError,
@@ -18,6 +18,7 @@ export default function PlayerControls(){
     centerOpen, openCenter,
     smartQueueEnabled, toggleSmartQueue,
   } = usePlayer()
+  const { progress, duration } = useProgress()
   const { songs, isSongLiked, toggleLikeSong } = useData()
 
   const pct = duration ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0

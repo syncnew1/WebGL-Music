@@ -155,13 +155,19 @@ export default function Library() {
     const failed: { id: string; title: string; reason: string }[] = []
     const queue = [...ids]
 
+    const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), ms)
+        p.then(v => { clearTimeout(timer); resolve(v) }, e => { clearTimeout(timer); reject(e) })
+      })
+
     const runOne = async () => {
       while (queue.length > 0 && !batchCancelRef.current) {
         const id = queue.shift()!
         const song = songs.find((s: any) => s.id === id)
         const title = song?.title || id
         try {
-          const res = await autoFillSongMeta(id, opts(id))
+          const res = await withTimeout<{ cover: boolean; lyrics: boolean }>(autoFillSongMeta(id, opts(id)), 15000)
           if (res?.cover || res?.lyrics) ok++
           else {
             fail++
@@ -169,7 +175,7 @@ export default function Library() {
           }
         } catch (e: any) {
           fail++
-          failed.push({ id, title, reason: e?.message || '补全失败' })
+          failed.push({ id, title, reason: e?.message === 'timeout' ? '请求超时' : e?.message || '补全失败' })
         } finally {
           setFillProgress(p => ({ ...p, done: Math.min(p.total, p.done + 1) }))
         }
@@ -296,7 +302,7 @@ export default function Library() {
                 <label className="flex items-center gap-1"><input type="checkbox" checked={lyricsOverride} onChange={e => setLyricsOverride(e.target.checked)} />覆盖歌词</label>
               </div>
               <Button variant="primary" onClick={runBatchFill} disabled={batchBusy}>{batchBusy ? '补全中...' : '开始补全选中歌曲'}</Button>
-              {batchBusy && <Button onClick={() => { batchCancelRef.current = true; setFillMsg('已终止补全'); }} variant="ghost">终止</Button>}
+              {batchBusy && <Button onClick={() => { batchCancelRef.current = true; setBatchBusy(false); setFillMsg('已终止补全'); }} variant="ghost">终止</Button>}
               {fillMsg && <div className="status-chip">{fillMsg}</div>}
             </div>
             {batchBusy && fillProgress.total > 0 && (

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { usePlayer } from '../../providers/PlayerProvider'
+import { usePlayer, useProgress } from '../../providers/PlayerProvider'
 import { useVisualizer } from '../../providers/VisualizerProvider'
 import { AudioAnalyzer, AnalysisFrame } from '../../visualizer/AudioAnalyzer'
 import VisualizerControls from '../VisualizerControls'
@@ -63,7 +63,8 @@ function PanelCard({ title, children, style }: { title?: string; children: React
 }
 
 export default function InsightDashboard() {
-  const { analyser, isPlaying } = usePlayer() as any
+  const { isPlaying } = usePlayer() as any
+  const { analyser } = useProgress()
   const { mode, theme, bloom, sensitivity, smoothing } = useVisualizer()
   const [frame, setFrame] = useState<AnalysisFrame>(EMPTY_FRAME)
   const analyzerRef = useRef<AudioAnalyzer | null>(null)

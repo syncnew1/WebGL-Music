@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useMemo } from 'react'
 import { useData } from '../providers/DataProvider'
 import { usePlayer } from '../providers/PlayerProvider'
 import Card from '../components/ui/Card'
@@ -7,16 +7,23 @@ import CoverImage from '../components/CoverImage'
 import { toTrack } from '../lib/trackUtils'
 import type { Song } from '../providers/DataProvider'
 
+const PAGE_SIZE = 30
+
 export default function Search(){
   const { searchSongs } = useData()
   const { play, addToQueue } = usePlayer()
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<Song[]>([])
+  const [page, setPage] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE))
+  const pageResults = useMemo(() => results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [results, page])
 
   const run = async (query: string) => {
     setLoading(true)
+    setPage(0)
     const r = await searchSongs(query)
     setResults(r)
     setLoading(false)
@@ -55,7 +62,7 @@ export default function Search(){
         </div>
       </section>
       <div className="card-grid">
-        {results.map((s: Song) => (
+        {pageResults.map((s: Song) => (
           <Card key={s.id}>
             <CoverImage path={s.cover_storage_path} url={s.cover_url} className="card-cover" />
             <div className="font-semibold">{s.title}</div>
@@ -68,6 +75,13 @@ export default function Search(){
         ))}
         {!loading && results.length === 0 && <div className="status-chip">暂无结果</div>}
       </div>
+      {results.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '12px 0' }}>
+          <Button onClick={() => setPage(p => p - 1)} disabled={page === 0}>上一页</Button>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>第 {page + 1} / {totalPages} 页</span>
+          <Button onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}>下一页</Button>
+        </div>
+      )}
     </div>
   )
 }
