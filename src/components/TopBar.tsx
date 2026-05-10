@@ -54,8 +54,8 @@ export default function TopBar() {
                 </>
               ) : (
                 <>
-                  <button onClick={() => void startNeteaseQrLogin()} style={{ fontSize: 11, color: 'var(--text)' }}>扫码登录</button>
-                  {neteaseQrImage && <button onClick={() => void checkNeteaseQrLogin()} style={{ fontSize: 11, color: 'var(--text-muted)' }}>检查状态</button>}
+                  <button onClick={() => { void startNeteaseQrLogin() }} style={{ fontSize: 11, color: 'var(--text)' }}>扫码登录</button>
+                  {neteaseQrImage && <button onClick={() => { void checkNeteaseQrLogin() }} style={{ fontSize: 11, color: 'var(--text-muted)' }}>检查状态</button>}
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{neteaseQrStatus}</span>
                 </>
               )}

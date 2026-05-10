@@ -22,6 +22,9 @@ type DataCtx = {
   fetchNeteaseLyricBySongId: (id: string) => Promise<string>
   fetchNeteasePlaylists: () => Promise<any[]>
   fetchNeteasePlaylistTracks: (playlistId: string) => Promise<Song[]>
+  loadMoreNeteaseSongs: () => Promise<void>
+  neteaseLoadingMore: boolean
+  neteaseHasMore: boolean
   dataSource: 'loading' | 'cloud' | 'local'
   cloudLatencyMs: number | null
   reloadCloudData: () => Promise<void>
@@ -80,6 +83,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const neteaseQrKeyRef = useRef('')
   const neteaseUidRef = useRef<number | null>(null)
   const neteaseSongUrlCache = useRef<Map<string, { url: string; exp: number }>>(new Map())
+  const [neteaseLoadingMore, setNeteaseLoadingMore] = useState(false)
+  const [neteaseHasMore, setNeteaseHasMore] = useState(true)
+  const neteaseChartIdsRef = useRef<number[]>([])
+  const neteaseChartIdxRef = useRef(0)
+  const neteaseChartOffsetRef = useRef(0)
 
   useEffect(() => {
     try { localStorage.setItem('wm:songs', JSON.stringify(songs)) } catch {}
@@ -105,10 +113,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const neteaseBase = (import.meta.env.VITE_NETEASE_API_BASE || '').replace(/\/$/, '')
   const hasNetease = neteaseBase.length > 0
 
-  const neteaseFetch = (path: string) =>
-    fetch(`${neteaseBase}${path}${path.includes('?') ? '&' : '?'}timestamp=${Date.now()}`, {
+  const neteaseFetch = (path: string, timeoutMs = 10000) => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+    return fetch(`${neteaseBase}${path}${path.includes('?') ? '&' : '?'}timestamp=${Date.now()}`, {
       credentials: 'include',
-    })
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer))
+  }
 
   const normalizeNeteaseCover = (u?: string) => (u || '').replace(/^http:\/\//i, 'https://')
 
@@ -129,50 +141,77 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }
 
   const startNeteaseQrLogin = async () => {
-    if (!hasNetease) throw new Error('未配置 VITE_NETEASE_API_BASE')
+    if (!hasNetease) {
+      setNeteaseQrStatus('未配置 VITE_NETEASE_API_BASE')
+      return
+    }
     setNeteaseQrStatus('二维码生成中...')
-    const keyResp = await neteaseFetch('/login/qr/key')
-    if (!keyResp.ok) throw new Error('获取二维码 key 失败')
-    const keyJson = await keyResp.json()
-    const key = keyJson?.data?.unikey || ''
-    if (!key) throw new Error('二维码 key 无效')
+    try {
+      const keyResp = await neteaseFetch('/login/qr/key')
+      if (!keyResp.ok) {
+        setNeteaseQrStatus(`获取二维码 key 失败 (${keyResp.status})`)
+        return
+      }
+      const keyJson = await keyResp.json()
+      const key = keyJson?.data?.unikey || ''
+      if (!key) {
+        setNeteaseQrStatus('二维码 key 无效')
+        return
+      }
 
-    const createResp = await neteaseFetch(`/login/qr/create?key=${encodeURIComponent(key)}&qrimg=true`)
-    if (!createResp.ok) throw new Error('生成二维码失败')
-    const createJson = await createResp.json()
-    const qr = createJson?.data?.qrimg || ''
-    if (!qr) throw new Error('二维码图片为空')
+      const createResp = await neteaseFetch(`/login/qr/create?key=${encodeURIComponent(key)}&qrimg=true`)
+      if (!createResp.ok) {
+        setNeteaseQrStatus(`生成二维码失败 (${createResp.status})`)
+        return
+      }
+      const createJson = await createResp.json()
+      const qr = createJson?.data?.qrimg || ''
+      if (!qr) {
+        setNeteaseQrStatus('二维码图片为空')
+        return
+      }
 
-    neteaseQrKeyRef.current = key
-    setNeteaseQrImage(qr)
-    setNeteaseQrStatus('请使用网易云音乐 App 扫码')
-    setNeteasePolling(true)
+      neteaseQrKeyRef.current = key
+      setNeteaseQrImage(qr)
+      setNeteaseQrStatus('请使用网易云音乐 App 扫码')
+      setNeteasePolling(true)
+    } catch (e: any) {
+      const msg = e?.name === 'AbortError' ? '请求超时，API 服务可能不可用' : (e?.message || '网络错误')
+      setNeteaseQrStatus(`登录失败：${msg}`)
+    }
   }
 
   const checkNeteaseQrLogin = async () => {
     if (!hasNetease) return
     const key = neteaseQrKeyRef.current
     if (!key) return
-    const resp = await neteaseFetch(`/login/qr/check?key=${encodeURIComponent(key)}`)
-    if (!resp.ok) return
-    const j = await resp.json()
-    const code = j?.code
-    if (code === 803) {
-      setNeteaseQrStatus('登录成功，正在刷新...')
-      setNeteasePolling(false)
-      setNeteaseQrImage('')
-      await syncNeteaseProfile()
-      window.setTimeout(() => {
-        window.location.reload()
-      }, 300)
-      return
-    }
-    if (code === 802) setNeteaseQrStatus('已扫码，请在手机确认')
-    else if (code === 801) setNeteaseQrStatus('等待扫码')
-    else if (code === 800) {
-      setNeteaseQrStatus('二维码已过期，请重新生成')
-      setNeteasePolling(false)
-    }
+    try {
+      const resp = await neteaseFetch(`/login/qr/check?key=${encodeURIComponent(key)}`)
+      if (!resp.ok) return
+      const j = await resp.json()
+      const code = j?.code
+      if (code === 803) {
+        // 直接从 check 响应中提取用户信息
+        const nickname = j?.nickname || j?.profile?.nickname || ''
+        const avatarUrl = j?.avatarUrl || j?.profile?.avatarUrl || ''
+        if (nickname) {
+          neteaseUidRef.current = Number(j?.userId || j?.profile?.userId || 0)
+          setNeteaseProfile({ nickname, avatarUrl: normalizeNeteaseCover(avatarUrl) })
+        }
+        setNeteaseQrStatus('登录成功')
+        setNeteasePolling(false)
+        setNeteaseQrImage('')
+        // 也尝试通过 syncNeteaseProfile 补充信息（不阻塞）
+        void syncNeteaseProfile()
+        return
+      }
+      if (code === 802) setNeteaseQrStatus('已扫码，请在手机确认')
+      else if (code === 801) setNeteaseQrStatus('等待扫码')
+      else if (code === 800) {
+        setNeteaseQrStatus('二维码已过期，请重新生成')
+        setNeteasePolling(false)
+      }
+    } catch {}
   }
 
   const logoutNetease = () => {
@@ -269,8 +308,60 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     tags: ['netease'],
   })
 
+  const fetchNeteasePlaylistIds = async (): Promise<number[]> => {
+    // 尝试 /toplist 获取排行榜
+    try {
+      const lr = await neteaseFetch('/toplist')
+      if (lr.ok) {
+        const lj = await lr.json()
+        const charts = Array.isArray(lj?.list) ? lj.list : []
+        const ids = charts.map((c: any) => c?.id).filter(Boolean)
+        if (ids.length > 0) return ids
+      }
+    } catch {}
+
+    // 回退：获取热门歌单
+    try {
+      const pr = await neteaseFetch('/top/playlist?limit=20&order=hot')
+      if (pr.ok) {
+        const pj = await pr.json()
+        const playlists = Array.isArray(pj?.playlists) ? pj.playlists : []
+        const ids = playlists.map((p: any) => p?.id).filter(Boolean)
+        if (ids.length > 0) return ids
+      }
+    } catch {}
+
+    return []
+  }
+
   const fetchNeteaseHotSongs = async () => {
     if (!hasNetease) return
+    neteaseChartIdsRef.current = []
+    neteaseChartIdxRef.current = 0
+    neteaseChartOffsetRef.current = 0
+    setNeteaseHasMore(true)
+
+    // 获取歌单/排行榜 ID 列表
+    const playlistIds = await fetchNeteasePlaylistIds()
+    neteaseChartIdsRef.current = playlistIds
+
+    // 加载第一批：从第一个歌单获取前 30 首
+    if (playlistIds.length > 0) {
+      try {
+        const r = await neteaseFetch(`/playlist/track/all?id=${playlistIds[0]}&limit=30&offset=0`)
+        if (r.ok) {
+          const j = await r.json()
+          const rows = Array.isArray(j?.songs) ? j.songs : []
+          if (rows.length > 0) {
+            setSongs(rows.map(toNeteaseSong))
+            neteaseChartOffsetRef.current = 30
+            return
+          }
+        }
+      } catch {}
+    }
+
+    // 回退到热歌榜
     try {
       const r = await neteaseFetch('/top/song?type=0')
       if (r.ok) {
@@ -290,6 +381,64 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const rows = (Array.isArray(j?.result) ? j.result : [])
       if (rows.length > 0) setSongs(rows.slice(0, 30).map(toNeteaseSong))
     } catch {}
+  }
+
+  const loadMoreNeteaseSongs = async () => {
+    if (!hasNetease || neteaseLoadingMore || !neteaseHasMore) return
+    const chartIds = neteaseChartIdsRef.current
+    if (chartIds.length === 0) {
+      // 没有歌单 ID，尝试重新获取
+      const ids = await fetchNeteasePlaylistIds()
+      if (ids.length === 0) {
+        setNeteaseHasMore(false)
+        return
+      }
+      neteaseChartIdsRef.current = ids
+    }
+
+    setNeteaseLoadingMore(true)
+    try {
+      const LIMIT = 30
+      const ids = neteaseChartIdsRef.current
+      let chartIdx = neteaseChartIdxRef.current
+      let offset = neteaseChartOffsetRef.current
+
+      while (chartIdx < ids.length) {
+        const chartId = ids[chartIdx]
+        const r = await neteaseFetch(`/playlist/track/all?id=${chartId}&limit=${LIMIT}&offset=${offset}`)
+        if (!r.ok) break
+        const j = await r.json()
+        const rows: any[] = Array.isArray(j?.songs) ? j.songs : []
+
+        if (rows.length > 0) {
+          const newSongs = rows.map(toNeteaseSong)
+          setSongs(prev => {
+            const m = new Map(prev.map(s => [s.id, s]))
+            for (const s of newSongs) m.set(s.id, s)
+            return Array.from(m.values())
+          })
+          offset += rows.length
+          neteaseChartOffsetRef.current = offset
+
+          // 如果本歌单还有更多，停在这里等下次加载
+          if (rows.length >= LIMIT) break
+        }
+
+        // 当前歌单已穷尽，切换到下一个
+        chartIdx++
+        offset = 0
+        neteaseChartIdxRef.current = chartIdx
+        neteaseChartOffsetRef.current = 0
+
+        if (chartIdx >= ids.length) {
+          setNeteaseHasMore(false)
+          break
+        }
+      }
+    } catch {
+    } finally {
+      setNeteaseLoadingMore(false)
+    }
   }
 
   useEffect(() => {
@@ -875,6 +1024,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       fetchNeteaseLyricBySongId,
       fetchNeteasePlaylists,
       fetchNeteasePlaylistTracks,
+      loadMoreNeteaseSongs,
+      neteaseLoadingMore,
+      neteaseHasMore,
       dataSource,
       cloudLatencyMs,
       reloadCloudData: loadCloudData,
@@ -894,7 +1046,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       isSongLiked,
       toggleLikeSong,
     }),
-    [songs, playlists, history, musicSource, dataSource, cloudLatencyMs]
+    [songs, playlists, history, musicSource, dataSource, cloudLatencyMs, neteaseProfile, neteaseQrImage, neteaseQrStatus, neteaseLoadingMore, neteaseHasMore]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
