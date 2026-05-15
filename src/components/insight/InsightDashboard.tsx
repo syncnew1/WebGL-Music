@@ -3,7 +3,7 @@ import { usePlayer, useProgress } from '../../providers/PlayerProvider'
 import { useVisualizer } from '../../providers/VisualizerProvider'
 import { AudioAnalyzer, AnalysisFrame } from '../../visualizer/AudioAnalyzer'
 import VisualizerControls from '../VisualizerControls'
-import { SpatialRadar, HarmonyWheel, BandBars, SpectrumWave, InstrumentList } from './VisComponents'
+import { SpatialRadar, HarmonyWheel, BandBars, InstrumentList } from './VisComponents'
 import WebGLModeCanvas from './WebGLModeCanvas'
 
 const EMPTY_FRAME: AnalysisFrame = {
@@ -103,6 +103,16 @@ export default function InsightDashboard() {
   const rmsDb = (20 * Math.log10(Math.max(frame.rms, 1e-8))).toFixed(1)
   const isLoud = frame.lufs > -14
   const isPulse = mode === 'cover-pulse'
+  const modeLabel: Record<string, string> = {
+    'cover-pulse': 'COVER PULSE',
+    'radial': 'SPECTRUM RING',
+    'spectrum': 'SPECTRUM BARS',
+  }
+  const titleLabel: Record<string, string> = {
+    'cover-pulse': '中心脉冲（GLSL + Bloom）',
+    'radial': '径向频谱环（实例化）',
+    'spectrum': '频谱柱状图（实例化 + Bloom）',
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '6px 0' }}>
@@ -146,19 +156,24 @@ export default function InsightDashboard() {
         <StatPill label="音色" value={centroidKhz} unit="kHz" color="var(--rose)" />
         <StatPill label="瞬态" value={(frame.spectralFlux * 100).toFixed(1)} unit="%" color="#a78bfa" />
         <StatPill label="节拍" value={String(Math.round(frame.beatStrength * 100))} unit="%" color="#f59e0b" accent={frame.beat} />
-        <StatPill label="模式" value={mode === 'cover-pulse' ? '封面' : mode === 'radial' ? '圆环' : '频谱'} color="var(--accent-bright)" />
-        <StatPill label="敏感度" value={isPulse ? String(Math.round(sensitivity * 100)) : '--'} unit={isPulse ? '%' : ''} color={isPulse ? 'var(--accent-bright)' : 'var(--text-muted)'} />
+        <StatPill label="模式" value={modeLabel[mode] ?? mode} color="var(--accent-bright)" />
+        <StatPill label="敏感度" value={String(Math.round(sensitivity * 100))} unit="%" color="var(--accent-bright)" />
         <StatPill label="平滑" value={isPulse ? String(Math.round(smoothing * 100)) : '--'} unit={isPulse ? '%' : ''} color={isPulse ? '#a78bfa' : 'var(--text-muted)'} />
-        <StatPill label="泛光" value={isPulse ? String(Math.round(bloom * 100)) : '--'} unit={isPulse ? '%' : ''} color={isPulse ? 'var(--accent-bright)' : 'var(--text-muted)'} />
+        <StatPill label="泛光" value={String(Math.round(bloom * 100))} unit="%" color="var(--accent-bright)" />
       </div>
 
-      <PanelCard title={mode === 'cover-pulse' ? '中心封面脉冲' : mode === 'radial' ? '环形频谱预览' : '频谱预览'} style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
+      <PanelCard title={titleLabel[mode] ?? mode} style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'absolute', right: 14, top: 14, zIndex: 2, padding: '6px 10px', borderRadius: 999, background: 'rgba(6,8,14,0.56)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.82)', fontSize: 11, letterSpacing: '0.1em' }}>
-          {mode === 'cover-pulse' ? 'COVER PULSE' : mode === 'radial' ? 'SPECTRUM RING' : 'SPECTRUM'}
+          {modeLabel[mode] ?? mode}
         </div>
-        {mode === 'cover-pulse' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={sensitivity} />}
-        {mode === 'radial' && <WebGLModeCanvas analyser={analyser} isPlaying={isPlaying} mode={mode} theme={theme} sensitivity={1} />}
-        {mode === 'spectrum' && <SpectrumWave analyser={analyser} theme={theme} />}
+        <WebGLModeCanvas
+          analyser={analyser}
+          isPlaying={isPlaying}
+          mode={mode}
+          theme={theme}
+          sensitivity={sensitivity}
+          bloom={bloom}
+        />
       </PanelCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

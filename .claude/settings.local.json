@@ -5,7 +5,8 @@
       "Bash(curl -s --max-time 10 \"https://api-enhanced-seven-kappa.vercel.app/login/qr/key?timestamp=$\\(date +%s\\)\")",
       "Bash(npx tsc *)",
       "Bash(npx vite *)",
-      "Bash(curl -s --max-time 8 \"https://api-enhanced-seven-kappa.vercel.app/toplist?timestamp=$\\(date +%s\\)\")"
+      "Bash(curl -s --max-time 8 \"https://api-enhanced-seven-kappa.vercel.app/toplist?timestamp=$\\(date +%s\\)\")",
+      "Bash(npx --no-install vite build)"
     ]
   }
 }

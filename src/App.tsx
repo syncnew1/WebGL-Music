@@ -20,6 +20,7 @@ import LyricsPanel from './components/LyricsPanel'
 import { useLayout } from './providers/LayoutProvider'
 import Button from './components/ui/Button'
 import FloatingAIAssistant from './components/FloatingAIAssistant'
+import BackgroundVisualizer from './components/BackgroundVisualizer'
 
 export default function App(){
   const { rightOpen, rightMode, closeRight, queue, current, centerOpen, play } = usePlayer()
@@ -38,6 +39,7 @@ export default function App(){
     >
       <NavSidebar />
       <TopBar />
+      <BackgroundVisualizer />
 
       <main className="content">
         <Routes>

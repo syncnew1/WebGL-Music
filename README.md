@@ -4,9 +4,17 @@
 
 ## 功能特性
 
+- **WebGL 可视化（核心）** -- 自定义 GLSL ES 3.0 着色器实现的多模式音频可视化
+  - 中心脉冲（Cover Pulse）：domain-warped fbm 星云 + 多层共振环 + 节拍冲击波
+  - 径向频谱环（Spectrum Ring）：96 段 instanced 渲染、log 频段映射
+  - 频谱柱状图（Spectrum Bars）：128 路 instanced + 峰值衰减
+  - 后处理流水线：bright-pass + ping-pong 高斯模糊 bloom + ACES tonemap + 暗角
+  - 主界面背景层（Ambient）：低 DPR 全屏 fbm 流动背景，跟随节拍呼吸
+  - 底部播放栏微缩频谱（Mini Spectrum）：64 路 instanced 频谱条
+  - 多配色主题：琥珀、霓虹、深空、彩虹
+- **音频特征提取** -- 10 频段能量、节拍检测、谱质心、谱通量、和声识别、乐器识别（人声/钢琴/吉他/小提琴/镲等）
 - **音乐播放** -- 完整的音频播放器，支持播放/暂停、上一首/下一首、进度拖拽、音量控制、单曲循环/列表循环/随机播放
-- **WebGL 可视化** -- 实时音频响应式可视化效果（频谱、波形、径向、封面脉冲），支持多种配色主题，基于自定义 GLSL 着色器
-- **3D 画廊** -- 基于 Three.js 的第一人称虚拟画廊漫游，墙面展示专辑封面，点击即可播放
+- **3D 画廊** -- 基于 Three.js 的第一人称虚拟画廊漫游
 - **网易云音乐** -- 扫码登录、浏览排行榜/歌单、搜索、在线播放、获取歌词
 - **云端曲库** -- 上传和管理歌曲至 Supabase，自动提取 ID3 标签
 - **歌词** -- LRC 格式同步歌词显示，点击跳转、内联编辑、繁简中文转换
@@ -68,18 +76,47 @@ yarn test
 
 ```
 src/
-  main.tsx              # 入口文件，Provider 嵌套
-  App.tsx               # 路由与布局
-  pages/                # 页面组件（首页、曲库、搜索、3D 画廊等）
-  components/           # UI 组件（播放控制、歌词面板、侧边栏等）
-    insight/            # 音频分析面板与 WebGL 画布
-    ui/                 # 通用基础组件（Button, Card, Input 等）
-  providers/            # 上下文 Provider（认证、数据、播放器、可视化、布局）
-  visualizer/           # 音频分析引擎
-    gl/                 # WebGL2 着色器渲染器（封面、点阵、粒子、模糊）
-  lib/                  # 工具库（Supabase 客户端、GLM 客户端、音轨工具）
-  styles/               # 主题样式
+  main.tsx                     # 入口文件，Provider 嵌套
+  App.tsx                      # 路由与布局，挂载全局背景可视化
+  pages/                       # 页面组件（首页、曲库、搜索、3D 画廊等）
+  components/
+    BackgroundVisualizer.tsx   # 全局环境背景 WebGL 画布
+    MiniSpectrum.tsx           # 底部播放栏微缩频谱
+    PlayerControls.tsx         # 底部播放栏（嵌入 MiniSpectrum）
+    insight/
+      InsightDashboard.tsx     # 可视化主面板
+      WebGLModeCanvas.tsx      # WebGL 多模式渲染容器（接入后处理流水线）
+      VisComponents.tsx        # 信息面板（声场分布 / 和声轮 / 频段 / 乐器）
+    ui/                        # 通用基础组件
+  providers/
+    PlayerProvider.tsx         # 播放器 + 全局 AnalyserNode
+    VisualizerProvider.tsx     # 可视化偏好（模式/主题/敏感度/泛光/背景开关）
+    ...
+  visualizer/
+    AudioAnalyzer.ts           # 音频特征提取（频段/节拍/和声/乐器/质心/通量）
+    gl/
+      util.ts                  # WebGL2 工具：着色器编译、FBO、全屏四边形
+      pipeline.ts              # 后处理流水线：bright-pass + ping-pong blur + composite
+      cover.ts                 # 中心脉冲（fbm 星云 + 多层环 + 冲击波）
+      ring.ts                  # 径向频谱环（instanced）
+      spectrum.ts              # 频谱柱状图（instanced + 峰值）
+      ambient.ts               # 全局背景着色器
+      miniSpectrum.ts          # 播放栏微缩频谱着色器
+  lib/                         # Supabase 客户端、GLM 客户端、音轨工具
+  styles/                      # 主题样式
 ```
+
+## 音频特征到视觉参数映射
+
+| 音频特征 | 视觉响应 |
+|---------|---------|
+| `smoothBass` | 中心脉冲半径、星云亮度、背景下方色带漂移 |
+| `smoothMid` | 星云密度、背景中部色带 |
+| `smoothTreble` | 环宽抖动、火花密度、高频角度细节 |
+| `beat / beatStrength` | 节拍冲击波、bloom 强度峰值 |
+| `spectralCentroid` | shader 色温混合（暗→亮三色渐变） |
+| `spectralFlux` | 顶点抖动、瞬态环厚度 |
+| `rms` | 整体响度、背景饱和度 |
 
 ## 部署
 

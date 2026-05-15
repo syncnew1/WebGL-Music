@@ -6,6 +6,7 @@ import CoverImage from './CoverImage'
 import { useData } from '../providers/DataProvider'
 import Tooltip from './ui/Tooltip'
 import VolumeControl from './ui/VolumeControl'
+import MiniSpectrum from './MiniSpectrum'
 
 export default function PlayerControls(){
   const {
@@ -42,6 +43,18 @@ export default function PlayerControls(){
 
   return (
     <footer className="playerbar">
+      <div style={{
+        position:'absolute',
+        left:0, right:0,
+        bottom:'100%',
+        height:96,
+        pointerEvents:'none',
+        opacity:0.9,
+        maskImage:'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 35%, rgba(0,0,0,0) 100%)',
+        WebkitMaskImage:'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 35%, rgba(0,0,0,0) 100%)',
+      }}>
+        <MiniSpectrum height={96} />
+      </div>
       <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0, overflow:'hidden' }}>
         <div className="album-thumb">
           {curSong?.cover_storage_path || curSong?.cover_url
