@@ -143,7 +143,7 @@ const PALETTES: Record<RingTheme, { primary: number[]; secondary: number[]; tert
   'amber-dark': { primary: [1.00, 0.55, 0.18], secondary: [1.00, 0.85, 0.50], tertiary: [1.00, 0.95, 0.78] },
   'neon-grid':  { primary: [0.13, 0.83, 0.93], secondary: [0.66, 0.33, 0.97], tertiary: [0.92, 0.48, 0.96] },
   'deep-space': { primary: [0.30, 0.55, 0.95], secondary: [0.96, 0.45, 0.71], tertiary: [0.55, 0.50, 0.95] },
-  'rainbow':    { primary: [0.19, 0.76, 0.49], secondary: [0.13, 0.83, 0.93], tertiary: [0.99, 0.78, 0.30] },
+  'rainbow':    { primary: [0.19, 0.76, 0.49], secondary: [0.13, 0.83, 0.93], tertiary: [0.60, 0.92, 0.75] },
 }
 
 export type RingRenderInput = {

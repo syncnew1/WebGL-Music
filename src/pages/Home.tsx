@@ -24,7 +24,7 @@ const THEMES: { id: 'amber-dark' | 'neon-grid' | 'deep-space' | 'rainbow'; label
   { id: 'amber-dark', label: '琥珀', stops: ['#ff7319', '#ffd14d', '#fff2c7'] },
   { id: 'neon-grid',  label: '霓虹', stops: ['#21d4ee', '#a854f7', '#f26bd9'] },
   { id: 'deep-space', label: '深空', stops: ['#4d8cf2', '#f574b5', '#8c80f2'] },
-  { id: 'rainbow',    label: '翡翠', stops: ['#31c27c', '#21d4ee', '#fcc74d'] },
+  { id: 'rainbow',    label: '翡翠', stops: ['#31c27c', '#21d4ee', '#9bebbf'] },
 ]
 
 function StatChip({ label, value, unit, accent }: { label: string; value: string; unit?: string; accent?: boolean }) {

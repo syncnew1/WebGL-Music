@@ -40,7 +40,7 @@ const GALLERY_PALETTES: Record<Theme, {
   },
   'rainbow': {
     bg: '#050d0a', fog: '#08110d',
-    floor: '#06100c', accent: '#31c27c', accentActive: '#fcc74d',
+    floor: '#06100c', accent: '#31c27c', accentActive: '#9bebbf',
     light: 0xc3ffe2,
   },
 }
@@ -160,6 +160,147 @@ const STAR_FRAG = `
   }
 `
 
+// 中央广场地面：4 道指向回廊的光带 + 圆形地纹
+const PLAZA_VERT = `
+  varying vec2 vUv;
+  void main(){
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+const PLAZA_FRAG = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform vec3 uAccent;
+  uniform float uTime;
+  uniform float uBass;
+  uniform float uBeat;
+  void main(){
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    float ang = atan(p.y, p.x);
+
+    // 圆形边缘
+    float ringEdge = smoothstep(0.96, 0.92, r) * smoothstep(0.0, 0.04, 1.0 - r);
+    // 内部呼吸圆
+    float innerR = 0.55 + 0.05 * sin(uTime * 1.2);
+    float innerRing = smoothstep(0.012, 0.0, abs(r - innerR));
+
+    // 4 个方向（前后左右）的指向光带
+    // 把 angle 映射到 4 段
+    float beam = 0.0;
+    for (int i = 0; i < 4; i++) {
+      float a0 = float(i) * 1.5707963;
+      float da = atan(sin(ang - a0), cos(ang - a0));
+      float beamLine = smoothstep(0.05, 0.0, abs(da));
+      // 沿径向流动
+      float flow = 0.6 + 0.4 * sin(r * 6.0 - uTime * 1.6 - float(i) * 1.4);
+      beamLine *= step(0.45, r) * smoothstep(0.98, 0.55, r) * flow;
+      beam += beamLine;
+    }
+
+    float pulse = 0.45 + uBass * 0.5 + uBeat * 0.6;
+    float alpha = (ringEdge * 0.7 + innerRing * 0.45 + beam * 0.55) * pulse;
+    gl_FragColor = vec4(uAccent, alpha);
+  }
+`
+
+// NOW PLAYING 舞台环：双层圆环呼吸
+const HALO_VERT = `
+  varying vec2 vUv;
+  void main(){
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+const HALO_FRAG = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform vec3 uAccent;
+  uniform float uTime;
+  uniform float uBass;
+  uniform float uBeat;
+  void main(){
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    float ang = atan(p.y, p.x);
+
+    // 主环
+    float ring1 = smoothstep(0.04, 0.0, abs(r - 0.78));
+    float ring2 = smoothstep(0.025, 0.0, abs(r - 0.92));
+    // 角度刻度
+    float ticks = step(0.94, abs(sin(ang * 32.0))) * smoothstep(0.04, 0.0, abs(r - 0.85));
+
+    float pulse = 0.55 + uBass * 0.6 + uBeat * 0.7;
+    pulse += 0.10 * sin(uTime * 1.4);
+
+    float a = (ring1 * 0.85 + ring2 * 0.55 + ticks * 0.7) * pulse;
+    gl_FragColor = vec4(uAccent, a);
+  }
+`
+
+// 舞台底部地面光斑：跟着 bass 扩散
+const STAGE_FLOOR_VERT = `
+  varying vec2 vUv;
+  void main(){
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+const STAGE_FLOOR_FRAG = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform vec3 uAccent;
+  uniform float uTime;
+  uniform float uBass;
+  uniform float uBeat;
+  void main(){
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    float core = smoothstep(0.55, 0.0, r) * (0.6 + uBass * 0.8);
+    float wave = sin(r * 8.0 - uTime * 1.8 + uBass * 4.0);
+    float ring = smoothstep(0.65, 0.85, wave) * smoothstep(0.95, 0.0, r) * (0.4 + uBeat * 0.7);
+    float a = (core + ring) * smoothstep(1.0, 0.0, r);
+    gl_FragColor = vec4(uAccent, a);
+  }
+`
+
+// NOW PLAYING 频谱柱：32 段，立在舞台两侧
+const STAGE_BAR_VERT = `
+  attribute vec3 aInst;  // (x, theta, height)
+  varying float vT;
+  varying float vH;
+  void main(){
+    float x = aInst.x;
+    float theta = aInst.y;
+    float h = aInst.z;
+    // 沿 y 拉伸：position.y 0..1 -> 实际 0..h
+    float yScaled = position.y * h * 1.4;
+    vec3 local = vec3(position.x * 0.06, yScaled, position.z * 0.06);
+    // 绕 y 轴旋转到 theta 方向
+    float c = cos(theta);
+    float s = sin(theta);
+    vec3 rotated = vec3(c * local.x + s * local.z, local.y, -s * local.x + c * local.z);
+    rotated.x += x * c;
+    rotated.z += x * (-s);
+    vT = position.y;
+    vH = h;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(rotated, 1.0);
+  }
+`
+const STAGE_BAR_FRAG = `
+  precision highp float;
+  varying float vT;
+  varying float vH;
+  uniform vec3 uPrimary;
+  uniform vec3 uSecondary;
+  void main(){
+    vec3 col = mix(uPrimary, uSecondary, vT);
+    float gain = 0.6 + vH * 1.0;
+    gl_FragColor = vec4(col * gain, 0.85);
+  }
+`
+
 export default function Gallery3D() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const lockRef = useRef<null | (() => void)>(null)
@@ -203,7 +344,7 @@ export default function Gallery3D() {
     scene.fog = new THREE.FogExp2(palette0.fog, 0.022)
 
     const camera = new THREE.PerspectiveCamera(68, host.clientWidth / host.clientHeight, 0.1, 320)
-    camera.position.set(0, 1.65, 8)
+    camera.position.set(0, 1.65, 6.5)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -291,6 +432,144 @@ export default function Gallery3D() {
     })
     const stars = new THREE.Points(starGeo, starMat)
     scene.add(stars)
+
+    // ── 中央广场地面（圆盘 + 4 道指向光带）─────────────────────────
+    const PLAZA_RADIUS = 8
+    const plazaMat = new THREE.ShaderMaterial({
+      vertexShader: PLAZA_VERT,
+      fragmentShader: PLAZA_FRAG,
+      uniforms: {
+        uAccent: { value: new THREE.Color(palette0.accent) },
+        uTime: { value: 0 },
+        uBass: { value: 0 },
+        uBeat: { value: 0 },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    })
+    const plaza = new THREE.Mesh(new THREE.PlaneGeometry(PLAZA_RADIUS * 2.2, PLAZA_RADIUS * 2.2), plazaMat)
+    plaza.rotation.x = -Math.PI / 2
+    plaza.position.y = 0.0035
+    scene.add(plaza)
+
+    // ── NOW PLAYING 中央舞台 ──────────────────────────────────────
+    const stage = new THREE.Group()
+    stage.position.set(0, 0, 0)
+    scene.add(stage)
+
+    // 1) 巨型封面（4×4m，浮空 2.4m）
+    const stageCoverMat = new THREE.MeshBasicMaterial({
+      map: null,
+      side: THREE.DoubleSide,
+      toneMapped: true,
+      transparent: true,
+      opacity: 1.0,
+    })
+    const stageCover = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.6), stageCoverMat)
+    stageCover.position.set(0, 2.6, 0)
+    stage.add(stageCover)
+
+    // 2) 双层 halo 环（始终面向相机的 billboard）
+    const stageHaloMat = new THREE.ShaderMaterial({
+      vertexShader: HALO_VERT,
+      fragmentShader: HALO_FRAG,
+      uniforms: {
+        uAccent: { value: new THREE.Color(palette0.accentActive) },
+        uTime: { value: 0 },
+        uBass: { value: 0 },
+        uBeat: { value: 0 },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      fog: false,
+    })
+    const stageHalo = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7.2), stageHaloMat)
+    stageHalo.position.set(0, 2.6, 0)
+    stage.add(stageHalo)
+
+    // 3) 舞台底部地面光斑
+    const stageFloorMat = new THREE.ShaderMaterial({
+      vertexShader: STAGE_FLOOR_VERT,
+      fragmentShader: STAGE_FLOOR_FRAG,
+      uniforms: {
+        uAccent: { value: new THREE.Color(palette0.accent) },
+        uTime: { value: 0 },
+        uBass: { value: 0 },
+        uBeat: { value: 0 },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    })
+    const stageFloor = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), stageFloorMat)
+    stageFloor.rotation.x = -Math.PI / 2
+    stageFloor.position.y = 0.006
+    stage.add(stageFloor)
+
+    // 4) 舞台两侧频谱立柱（左右各 16 根）
+    const STAGE_BAR_COUNT = 32
+    const barInst = new Float32Array(STAGE_BAR_COUNT * 3)
+    for (let i = 0; i < STAGE_BAR_COUNT; i++) {
+      const half = i < 16 ? i : i - 16
+      const isLeft = i < 16
+      const t = half / 15
+      // 在两侧弧线上：theta 0 朝向相机方向（+Z），所以左 = -PI/2, 右 = +PI/2
+      const theta = (isLeft ? -1 : 1) * (Math.PI / 2) + (t - 0.5) * 0.9
+      const radius = 2.5
+      barInst[i * 3 + 0] = radius
+      barInst[i * 3 + 1] = theta
+      barInst[i * 3 + 2] = 0.05
+    }
+    const barGeo = new THREE.InstancedBufferGeometry()
+    const barBox = new THREE.BoxGeometry(1, 1, 1)
+    barGeo.index = barBox.index
+    barGeo.attributes.position = barBox.attributes.position
+    barGeo.attributes.normal = barBox.attributes.normal
+    barGeo.attributes.uv = barBox.attributes.uv
+    barGeo.setAttribute('aInst', new THREE.InstancedBufferAttribute(barInst, 3))
+    barGeo.instanceCount = STAGE_BAR_COUNT
+    const barMat = new THREE.ShaderMaterial({
+      vertexShader: STAGE_BAR_VERT,
+      fragmentShader: STAGE_BAR_FRAG,
+      uniforms: {
+        uPrimary: { value: new THREE.Color(palette0.accent) },
+        uSecondary: { value: new THREE.Color(palette0.accentActive) },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    })
+    const stageBars = new THREE.Mesh(barGeo, barMat)
+    stageBars.position.y = 0.05
+    stage.add(stageBars)
+
+    // 5) NOW PLAYING 铭牌
+    const stageNamePlateMat = new THREE.MeshBasicMaterial({
+      map: null,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    })
+    const stageNamePlate = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.7), stageNamePlateMat)
+    stageNamePlate.position.set(0, 0.65, 0)
+    stage.add(stageNamePlate)
+
+    // 6) 顶部 NOW PLAYING 标签（小）
+    const stageLabelMat = new THREE.MeshBasicMaterial({
+      map: null,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    })
+    const stageLabel = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.36), stageLabelMat)
+    stageLabel.position.set(0, 5.0, 0)
+    stage.add(stageLabel)
 
     // ── controls ───────────────────────────────────────────────────
     const controls = new PointerLockControls(camera, renderer.domElement)
@@ -389,6 +668,70 @@ export default function Gallery3D() {
       return tex
     }
 
+    // NOW PLAYING 大铭牌（带主色调下划线）
+    const makeStagePlateTexture = (title: string, artist: string, accentHex: string) => {
+      const c = document.createElement('canvas')
+      c.width = 1536
+      c.height = 256
+      const ctx = c.getContext('2d')!
+      ctx.clearRect(0, 0, c.width, c.height)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = 'rgba(244,247,255,0.95)'
+      ctx.font = '700 80px Poppins, sans-serif'
+      ctx.fillText((title || '未在播放').slice(0, 22), c.width / 2, 92)
+      ctx.fillStyle = 'rgba(190,206,236,0.66)'
+      ctx.font = '40px Poppins, sans-serif'
+      ctx.fillText((artist || '').slice(0, 30), c.width / 2, 172)
+      // 渐变下划线
+      const grad = ctx.createLinearGradient(c.width / 2 - 220, 0, c.width / 2 + 220, 0)
+      grad.addColorStop(0, 'rgba(255,255,255,0)')
+      grad.addColorStop(0.5, accentHex)
+      grad.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = grad
+      ctx.fillRect(c.width / 2 - 220, 220, 440, 2.5)
+      const tex = new THREE.CanvasTexture(c)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.anisotropy = 4
+      return tex
+    }
+
+    // NOW PLAYING 小标签（顶部）
+    const makeStageLabelTexture = (accentHex: string) => {
+      const c = document.createElement('canvas')
+      c.width = 1024
+      c.height = 160
+      const ctx = c.getContext('2d')!
+      ctx.clearRect(0, 0, c.width, c.height)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = accentHex
+      ctx.font = '700 60px Righteous, Poppins, sans-serif'
+      const text = 'NOW   PLAYING'
+      ctx.fillText(text, c.width / 2, c.height / 2)
+      const tex = new THREE.CanvasTexture(c)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.anisotropy = 4
+      return tex
+    }
+
+    // 初始化舞台铭牌
+    const stageNamePlateTextures: THREE.Texture[] = []
+    const refreshStagePlate = (title: string, artist: string) => {
+      const accentHex = GALLERY_PALETTES[themeRef.current].accentActive
+      const old = (stageNamePlateMat.map as THREE.Texture | null)
+      stageNamePlateMat.map = makeStagePlateTexture(title, artist, accentHex)
+      stageNamePlateMat.needsUpdate = true
+      if (old) { old.dispose() }
+      stageNamePlateTextures.push(stageNamePlateMat.map as THREE.Texture)
+      const oldLabel = (stageLabelMat.map as THREE.Texture | null)
+      stageLabelMat.map = makeStageLabelTexture(accentHex)
+      stageLabelMat.needsUpdate = true
+      if (oldLabel) oldLabel.dispose()
+      stageNamePlateTextures.push(stageLabelMat.map as THREE.Texture)
+    }
+    refreshStagePlate('未在播放', '请走向任意回廊选择曲目')
+
     const clearFrames = () => {
       hitMeshes.length = 0
       frameShaders.length = 0
@@ -427,20 +770,28 @@ export default function Gallery3D() {
       const accent = new THREE.Color(palette.accent)
       const accentActive = new THREE.Color(palette.accentActive)
 
-      const spacing = 4.6
-      const startZ = 0
-      const list = items.slice(0, 70)
+      // ── 十字四回廊布局 ─────────────────────────────────────────
+      // 4 条回廊（北/东/南/西），每条回廊两侧悬挂画框
+      // 回廊参数
+      const CORRIDOR_HALF_WIDTH = 5.6  // 画框中心距走廊中线
+      const CORRIDOR_START = 11        // 距广场中心多远开始第一幅
+      const SPACING = 4.6              // 同侧相邻画框纵深间距
+      const FRAME_Y = 1.85
+      // 每条回廊容纳的画框对数（左+右）
+      const PAIRS_PER_CORRIDOR = 9     // 每条回廊 18 幅，4 条共 72 幅
+      const list = items.slice(0, 4 * PAIRS_PER_CORRIDOR * 2)
 
-      for (let i = 0; i < list.length; i += 1) {
-        const song = list[i]
-        const isLeft = i % 2 === 0
-        const frameX = isLeft ? -5.6 : 5.6
-        const frameY = 1.85
-        const frameZ = startZ - i * spacing
-        const rotY = isLeft ? -Math.PI / 2 : Math.PI / 2
-        const facing = isLeft ? 1 : -1   // 法线方向
+      // 4 个方向：+Z 北、+X 东、-Z 南、-X 西
+      // 对每个方向，沿正向远离中心摆放
+      const DIRS: { dir: THREE.Vector3; rotY: number; name: string }[] = [
+        { dir: new THREE.Vector3(0, 0, -1), rotY: 0, name: '北' },
+        { dir: new THREE.Vector3(1, 0, 0), rotY: Math.PI / 2, name: '东' },
+        { dir: new THREE.Vector3(0, 0, 1), rotY: Math.PI, name: '南' },
+        { dir: new THREE.Vector3(-1, 0, 0), rotY: -Math.PI / 2, name: '西' },
+      ]
 
-        // 极薄金属边框（厚度只有 4cm）
+      const placeFrame = (song: any, frameX: number, frameY: number, frameZ: number, faceRotY: number, normal: THREE.Vector3) => {
+        // border: 极薄金属
         const borderMat = new THREE.MeshStandardMaterial({
           color: 0x12131a,
           emissive: accent.clone(),
@@ -450,23 +801,24 @@ export default function Gallery3D() {
         })
         const border = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 0.04), borderMat)
         border.position.set(frameX, frameY, frameZ)
-        border.rotation.y = rotY
+        border.rotation.y = faceRotY
         ;(border as any).userData.songId = song.id
         ;(border as any).userData.borderMat = borderMat
         frameRoot.add(border)
 
-        // 封面（贴在边框正面，比边框小一圈）
+        // 封面：贴在边框正面（沿法线 +0.025）
+        const coverPos = new THREE.Vector3(frameX, frameY, frameZ).add(normal.clone().multiplyScalar(0.025))
         const coverMat = new THREE.MeshBasicMaterial({
           map: makeFallbackTexture(song.title, song.artist),
           side: THREE.DoubleSide,
           toneMapped: true,
         })
         const cover = new THREE.Mesh(new THREE.PlaneGeometry(2.34, 2.34), coverMat)
-        cover.position.set(frameX + facing * 0.025, frameY, frameZ)
-        cover.rotation.y = rotY
+        cover.position.copy(coverPos)
+        cover.rotation.y = faceRotY
         frameRoot.add(cover)
 
-        // 边缘呼吸光（贴在封面前一层）
+        // 边缘呼吸光
         const glowMat = new THREE.ShaderMaterial({
           vertexShader: FRAME_VERT,
           fragmentShader: FRAME_FRAG,
@@ -484,39 +836,43 @@ export default function Gallery3D() {
           side: THREE.DoubleSide,
         })
         ;(glowMat as any).userData.songId = song.id
+        const glowPos = new THREE.Vector3(frameX, frameY, frameZ).add(normal.clone().multiplyScalar(0.027))
         const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 2.5), glowMat)
-        glow.position.set(frameX + facing * 0.027, frameY, frameZ)
-        glow.rotation.y = rotY
+        glow.position.copy(glowPos)
+        glow.rotation.y = faceRotY
         frameRoot.add(glow)
         frameShaders.push(glowMat)
 
-        // 标题铭牌：放在画框正下方
+        // 标题铭牌
         const plateMat = new THREE.MeshBasicMaterial({
           map: makePlateTexture(song.title, song.artist),
           transparent: true,
           depthWrite: false,
           toneMapped: false,
         })
+        const platePos = coverPos.clone(); platePos.y = frameY - 1.62
         const plate = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.50), plateMat)
-        plate.position.set(frameX + facing * 0.025, frameY - 1.62, frameZ)
-        plate.rotation.y = rotY
+        plate.position.copy(platePos)
+        plate.rotation.y = faceRotY
         frameRoot.add(plate)
 
-        // SpotLight 真实打光（帮助封面 emissive 与反射地面）
+        // SpotLight：从画框前上方向画框打光
+        const spotPos = new THREE.Vector3(frameX, frameY + 2.0, frameZ).add(normal.clone().multiplyScalar(0.55))
         const spot = new THREE.SpotLight(palette.light, 0.85, 9, Math.PI / 6, 0.5, 1.4)
-        spot.position.set(frameX + facing * 0.55, frameY + 2.0, frameZ)
+        spot.position.copy(spotPos)
         spot.target.position.set(frameX, frameY, frameZ)
         scene.add(spot, spot.target)
         spotLights.push(spot)
         ;(spot as any).userData.songId = song.id
 
         // 命中盒
+        const hitPos = new THREE.Vector3(frameX, frameY, frameZ).add(normal.clone().multiplyScalar(0.04))
         const hit = new THREE.Mesh(
           new THREE.PlaneGeometry(2.6, 2.6),
           new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }),
         )
-        hit.position.set(frameX + facing * 0.04, frameY, frameZ)
-        hit.rotation.y = rotY
+        hit.position.copy(hitPos)
+        hit.rotation.y = faceRotY
         hit.userData.song = toTrack(song)
         hit.userData.songId = song.id
         frameRoot.add(hit)
@@ -534,10 +890,42 @@ export default function Gallery3D() {
         })()
       }
 
+      // 把 list 切成 4 段，每段铺一条回廊
+      let idx = 0
+      for (let d = 0; d < DIRS.length; d++) {
+        const { dir } = DIRS[d]
+        // 回廊方向单位向量 fwd（指向远处），left/right 是垂直方向
+        const fwd = dir.clone()
+        const right = new THREE.Vector3(-fwd.z, 0, fwd.x) // 右手坐标，绕 +Y 旋转 90°
+        for (let pair = 0; pair < PAIRS_PER_CORRIDOR; pair++) {
+          const along = CORRIDOR_START + pair * SPACING
+          // 左侧画框
+          if (idx < list.length) {
+            const songL = list[idx++]
+            const baseL = fwd.clone().multiplyScalar(along).add(right.clone().multiplyScalar(-CORRIDOR_HALF_WIDTH))
+            // 左侧画框法线指向走廊中心：+right 方向
+            const normalL = right.clone()
+            // 面朝向：法线方向决定 rotY
+            const rotL = Math.atan2(normalL.x, normalL.z)
+            placeFrame(songL, baseL.x, FRAME_Y, baseL.z, rotL, normalL)
+          }
+          // 右侧画框
+          if (idx < list.length) {
+            const songR = list[idx++]
+            const baseR = fwd.clone().multiplyScalar(along).add(right.clone().multiplyScalar(CORRIDOR_HALF_WIDTH))
+            // 右侧画框法线指向走廊中心：-right 方向
+            const normalR = right.clone().multiplyScalar(-1)
+            const rotR = Math.atan2(normalR.x, normalR.z)
+            placeFrame(songR, baseR.x, FRAME_Y, baseR.z, rotR, normalR)
+          }
+        }
+      }
+
       focusedSongRef.current = null
       setFocusedLabel('')
       setTip(hitMeshes.length > 0 ? '画框就绪：进入漫游后准星对准封面左键播放' : '暂无歌曲可展示')
     }
+
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0 || !controls.isLocked) return
@@ -626,8 +1014,16 @@ export default function Gallery3D() {
         if (forward !== 0) controls.moveForward(forward * speed * dt)
         if (right !== 0) controls.moveRight(right * speed * dt)
 
-        camera.position.x = THREE.MathUtils.clamp(camera.position.x, -3.6, 3.6)
-        camera.position.z = THREE.MathUtils.clamp(camera.position.z, -150, 12)
+        // 圆形漫游边界（半径 60m），高度固定
+        const MAX_R = 60
+        const dx = camera.position.x
+        const dz = camera.position.z
+        const r2 = dx * dx + dz * dz
+        if (r2 > MAX_R * MAX_R) {
+          const r = Math.sqrt(r2)
+          camera.position.x = (dx / r) * MAX_R
+          camera.position.z = (dz / r) * MAX_R
+        }
         camera.position.y = 1.65
 
         raycaster.setFromCamera(centerNDC, camera)

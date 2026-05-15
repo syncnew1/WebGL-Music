@@ -22,7 +22,7 @@ const THEMES: { id: 'amber-dark' | 'neon-grid' | 'deep-space' | 'rainbow'; label
   { id: 'amber-dark', label: '琥珀', stops: ['#ff7319', '#ffd14d', '#fff2c7'] },
   { id: 'neon-grid',  label: '霓虹', stops: ['#21d4ee', '#a854f7', '#f26bd9'] },
   { id: 'deep-space', label: '深空', stops: ['#4d8cf2', '#f574b5', '#8c80f2'] },
-  { id: 'rainbow',    label: '翡翠', stops: ['#31c27c', '#21d4ee', '#fcc74d'] },
+  { id: 'rainbow',    label: '翡翠', stops: ['#31c27c', '#21d4ee', '#9bebbf'] },
 ]
 
 export default function Visualizer() {
@@ -216,16 +216,22 @@ export default function Visualizer() {
                   onClick={() => setTheme(t.id)}
                   className="cursor-pointer"
                   aria-label={`切换到 ${t.label} 主题`}
+                  title={t.label}
                   style={{
-                    width: 30, height: 30, borderRadius: '50%',
+                    display: 'inline-flex',
+                    overflow: 'hidden',
+                    width: 36, height: 22, borderRadius: 6,
                     border: `2px solid ${active ? 'var(--accent-bright)' : 'rgba(255,255,255,0.18)'}`,
-                    background: t.gradient,
                     cursor: 'pointer',
                     transition: 'all 180ms ease',
-                    boxShadow: active ? '0 0 12px rgba(49,194,124,0.55)' : 'none',
+                    boxShadow: active ? '0 0 10px rgba(49,194,124,0.45)' : 'none',
+                    padding: 0,
                   }}
-                  title={t.label}
-                />
+                >
+                  {t.stops.map(c => (
+                    <span key={c} style={{ flex: 1, background: c, display: 'block' }} />
+                  ))}
+                </button>
               )
             })}
           </div>
