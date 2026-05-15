@@ -160,51 +160,6 @@ const STAR_FRAG = `
   }
 `
 
-// 中央广场地面：4 道指向回廊的光带 + 圆形地纹
-const PLAZA_VERT = `
-  varying vec2 vUv;
-  void main(){
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`
-const PLAZA_FRAG = `
-  precision highp float;
-  varying vec2 vUv;
-  uniform vec3 uAccent;
-  uniform float uTime;
-  uniform float uBass;
-  uniform float uBeat;
-  void main(){
-    vec2 p = vUv * 2.0 - 1.0;
-    float r = length(p);
-    float ang = atan(p.y, p.x);
-
-    // 圆形边缘
-    float ringEdge = smoothstep(0.96, 0.92, r) * smoothstep(0.0, 0.04, 1.0 - r);
-    // 内部呼吸圆
-    float innerR = 0.55 + 0.05 * sin(uTime * 1.2);
-    float innerRing = smoothstep(0.012, 0.0, abs(r - innerR));
-
-    // 4 个方向（前后左右）的指向光带
-    // 把 angle 映射到 4 段
-    float beam = 0.0;
-    for (int i = 0; i < 4; i++) {
-      float a0 = float(i) * 1.5707963;
-      float da = atan(sin(ang - a0), cos(ang - a0));
-      float beamLine = smoothstep(0.05, 0.0, abs(da));
-      // 沿径向流动
-      float flow = 0.6 + 0.4 * sin(r * 6.0 - uTime * 1.6 - float(i) * 1.4);
-      beamLine *= step(0.45, r) * smoothstep(0.98, 0.55, r) * flow;
-      beam += beamLine;
-    }
-
-    float pulse = 0.45 + uBass * 0.5 + uBeat * 0.6;
-    float alpha = (ringEdge * 0.7 + innerRing * 0.45 + beam * 0.55) * pulse;
-    gl_FragColor = vec4(uAccent, alpha);
-  }
-`
-
 // NOW PLAYING 舞台环：双层圆环呼吸
 const HALO_VERT = `
   varying vec2 vUv;
@@ -231,10 +186,10 @@ const HALO_FRAG = `
     // 角度刻度
     float ticks = step(0.94, abs(sin(ang * 32.0))) * smoothstep(0.04, 0.0, abs(r - 0.85));
 
-    float pulse = 0.55 + uBass * 0.6 + uBeat * 0.7;
-    pulse += 0.10 * sin(uTime * 1.4);
+    float pulse = 0.30 + uBass * 0.45 + uBeat * 0.95;
+    pulse += 0.06 * sin(uTime * 1.4);
 
-    float a = (ring1 * 0.85 + ring2 * 0.55 + ticks * 0.7) * pulse;
+    float a = (ring1 * 0.55 + ring2 * 0.32 + ticks * 0.42) * pulse;
     gl_FragColor = vec4(uAccent, a);
   }
 `
@@ -257,9 +212,10 @@ const STAGE_FLOOR_FRAG = `
   void main(){
     vec2 p = vUv * 2.0 - 1.0;
     float r = length(p);
-    float core = smoothstep(0.55, 0.0, r) * (0.6 + uBass * 0.8);
+    // 整体亮度压低；保留可被节拍点亮的呼吸
+    float core = smoothstep(0.55, 0.0, r) * (0.18 + uBass * 0.55 + uBeat * 0.45);
     float wave = sin(r * 8.0 - uTime * 1.8 + uBass * 4.0);
-    float ring = smoothstep(0.65, 0.85, wave) * smoothstep(0.95, 0.0, r) * (0.4 + uBeat * 0.7);
+    float ring = smoothstep(0.72, 0.92, wave) * smoothstep(0.95, 0.0, r) * (0.10 + uBeat * 0.85);
     float a = (core + ring) * smoothstep(1.0, 0.0, r);
     gl_FragColor = vec4(uAccent, a);
   }
@@ -296,8 +252,9 @@ const STAGE_BAR_FRAG = `
   uniform vec3 uSecondary;
   void main(){
     vec3 col = mix(uPrimary, uSecondary, vT);
-    float gain = 0.6 + vH * 1.0;
-    gl_FragColor = vec4(col * gain, 0.85);
+    // 静止时几乎不可见；柱高直接驱动整体亮度
+    float gain = 0.18 + vH * 1.4;
+    gl_FragColor = vec4(col * gain, 0.55 + vH * 0.4);
   }
 `
 
@@ -351,7 +308,7 @@ export default function Gallery3D() {
     renderer.setSize(host.clientWidth, host.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 0.78
+    renderer.toneMappingExposure = 0.62
     host.appendChild(renderer.domElement)
 
     // ── lights ──────────────────────────────────────────────────────
@@ -432,27 +389,6 @@ export default function Gallery3D() {
     })
     const stars = new THREE.Points(starGeo, starMat)
     scene.add(stars)
-
-    // ── 中央广场地面（圆盘 + 4 道指向光带）─────────────────────────
-    const PLAZA_RADIUS = 8
-    const plazaMat = new THREE.ShaderMaterial({
-      vertexShader: PLAZA_VERT,
-      fragmentShader: PLAZA_FRAG,
-      uniforms: {
-        uAccent: { value: new THREE.Color(palette0.accent) },
-        uTime: { value: 0 },
-        uBass: { value: 0 },
-        uBeat: { value: 0 },
-      },
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      fog: false,
-    })
-    const plaza = new THREE.Mesh(new THREE.PlaneGeometry(PLAZA_RADIUS * 2.2, PLAZA_RADIUS * 2.2), plazaMat)
-    plaza.rotation.x = -Math.PI / 2
-    plaza.position.y = 0.0035
-    scene.add(plaza)
 
     // ── NOW PLAYING 中央舞台 ──────────────────────────────────────
     const stage = new THREE.Group()
@@ -571,6 +507,75 @@ export default function Gallery3D() {
     stageLabel.position.set(0, 5.0, 0)
     stage.add(stageLabel)
 
+    // 静态 "NOW PLAYING" 顶部标签
+    {
+      const c = document.createElement('canvas')
+      c.width = 1024; c.height = 160
+      const ctx = c.getContext('2d')!
+      ctx.clearRect(0, 0, c.width, c.height)
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'
+      ctx.font = '800 56px Poppins, sans-serif'
+      ctx.fillText('NOW PLAYING', c.width / 2, c.height / 2 + 4)
+      const tex = new THREE.CanvasTexture(c)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.anisotropy = 4
+      stageLabelMat.map = tex
+      stageLabelMat.needsUpdate = true
+      ;(stageLabel as any).userData.labelTex = tex
+    }
+
+    // 当前播放：刷新舞台封面 + 名称铭牌
+    let stageCoverTex: THREE.Texture | null = null
+    let stagePlateTex: THREE.Texture | null = null
+    const refreshStageForSongId = (id: string | null) => {
+      const song = id ? songsRef.current.find((s: any) => s.id === id) : null
+      if (!song) {
+        stageCoverMat.map = null
+        stageCoverMat.needsUpdate = true
+        stageNamePlateMat.map = null
+        stageNamePlateMat.needsUpdate = true
+        if (stageCoverTex) { stageCoverTex.dispose(); stageCoverTex = null }
+        if (stagePlateTex) { stagePlateTex.dispose(); stagePlateTex = null }
+        return
+      }
+      const c = document.createElement('canvas')
+      c.width = 1024; c.height = 192
+      const ctx = c.getContext('2d')!
+      ctx.clearRect(0, 0, c.width, c.height)
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillStyle = 'rgba(245,248,255,0.98)'
+      ctx.font = '700 64px Poppins, sans-serif'
+      ctx.fillText((song.title || '').slice(0, 24), c.width / 2, 78)
+      ctx.fillStyle = 'rgba(190,210,240,0.78)'
+      ctx.font = '34px Poppins, sans-serif'
+      ctx.fillText((song.artist || '').slice(0, 32), c.width / 2, 144)
+      const plateTex = new THREE.CanvasTexture(c)
+      plateTex.colorSpace = THREE.SRGBColorSpace
+      plateTex.anisotropy = 4
+      if (stagePlateTex) stagePlateTex.dispose()
+      stagePlateTex = plateTex
+      stageNamePlateMat.map = plateTex
+      stageNamePlateMat.needsUpdate = true
+
+      const fallback = makeFallbackTexture(song.title, song.artist)
+      stageCoverMat.map = fallback
+      stageCoverMat.needsUpdate = true
+      void (async () => {
+        const url = await coverUrlWithTimeout(song)
+        if (!url) return
+        textureLoader.load(url, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace
+          if (stageCoverTex) stageCoverTex.dispose()
+          stageCoverTex = tex
+          if (currentIdRef.current === song.id) {
+            stageCoverMat.map = tex
+            stageCoverMat.needsUpdate = true
+          }
+        })
+      })()
+    }
+
     // ── controls ───────────────────────────────────────────────────
     const controls = new PointerLockControls(camera, renderer.domElement)
     scene.add(controls.object)
@@ -667,70 +672,6 @@ export default function Gallery3D() {
       disposableTextures.push(tex)
       return tex
     }
-
-    // NOW PLAYING 大铭牌（带主色调下划线）
-    const makeStagePlateTexture = (title: string, artist: string, accentHex: string) => {
-      const c = document.createElement('canvas')
-      c.width = 1536
-      c.height = 256
-      const ctx = c.getContext('2d')!
-      ctx.clearRect(0, 0, c.width, c.height)
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = 'rgba(244,247,255,0.95)'
-      ctx.font = '700 80px Poppins, sans-serif'
-      ctx.fillText((title || '未在播放').slice(0, 22), c.width / 2, 92)
-      ctx.fillStyle = 'rgba(190,206,236,0.66)'
-      ctx.font = '40px Poppins, sans-serif'
-      ctx.fillText((artist || '').slice(0, 30), c.width / 2, 172)
-      // 渐变下划线
-      const grad = ctx.createLinearGradient(c.width / 2 - 220, 0, c.width / 2 + 220, 0)
-      grad.addColorStop(0, 'rgba(255,255,255,0)')
-      grad.addColorStop(0.5, accentHex)
-      grad.addColorStop(1, 'rgba(255,255,255,0)')
-      ctx.fillStyle = grad
-      ctx.fillRect(c.width / 2 - 220, 220, 440, 2.5)
-      const tex = new THREE.CanvasTexture(c)
-      tex.colorSpace = THREE.SRGBColorSpace
-      tex.anisotropy = 4
-      return tex
-    }
-
-    // NOW PLAYING 小标签（顶部）
-    const makeStageLabelTexture = (accentHex: string) => {
-      const c = document.createElement('canvas')
-      c.width = 1024
-      c.height = 160
-      const ctx = c.getContext('2d')!
-      ctx.clearRect(0, 0, c.width, c.height)
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = accentHex
-      ctx.font = '700 60px Righteous, Poppins, sans-serif'
-      const text = 'NOW   PLAYING'
-      ctx.fillText(text, c.width / 2, c.height / 2)
-      const tex = new THREE.CanvasTexture(c)
-      tex.colorSpace = THREE.SRGBColorSpace
-      tex.anisotropy = 4
-      return tex
-    }
-
-    // 初始化舞台铭牌
-    const stageNamePlateTextures: THREE.Texture[] = []
-    const refreshStagePlate = (title: string, artist: string) => {
-      const accentHex = GALLERY_PALETTES[themeRef.current].accentActive
-      const old = (stageNamePlateMat.map as THREE.Texture | null)
-      stageNamePlateMat.map = makeStagePlateTexture(title, artist, accentHex)
-      stageNamePlateMat.needsUpdate = true
-      if (old) { old.dispose() }
-      stageNamePlateTextures.push(stageNamePlateMat.map as THREE.Texture)
-      const oldLabel = (stageLabelMat.map as THREE.Texture | null)
-      stageLabelMat.map = makeStageLabelTexture(accentHex)
-      stageLabelMat.needsUpdate = true
-      if (oldLabel) oldLabel.dispose()
-      stageNamePlateTextures.push(stageLabelMat.map as THREE.Texture)
-    }
-    refreshStagePlate('未在播放', '请走向任意回廊选择曲目')
 
     const clearFrames = () => {
       hitMeshes.length = 0
@@ -942,10 +883,10 @@ export default function Gallery3D() {
     composer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     composer.setSize(host.clientWidth, host.clientHeight)
     composer.addPass(new RenderPass(scene, camera))
-    const bloomBase = 0.20
+    const bloomBase = 0.12
     const bloom = new UnrealBloomPass(
       new THREE.Vector2(host.clientWidth, host.clientHeight),
-      bloomBase, 0.55, 0.78,
+      bloomBase, 0.50, 0.88,
     )
     composer.addPass(bloom)
     composer.addPass(new OutputPass())
@@ -985,6 +926,11 @@ export default function Gallery3D() {
       }
       for (const sl of spotLights) sl.color.set(p.light)
       ;(starMat.uniforms.uColor.value as THREE.Color).set(p.light)
+      // 舞台颜色同步
+      ;(stageHaloMat.uniforms.uAccent.value as THREE.Color).set(p.accentActive)
+      ;(stageFloorMat.uniforms.uAccent.value as THREE.Color).set(p.accent)
+      ;(barMat.uniforms.uPrimary.value as THREE.Color).set(p.accent)
+      ;(barMat.uniforms.uSecondary.value as THREE.Color).set(p.accentActive)
       for (const obj of frameRoot.children) {
         const ud = (obj as any).userData
         if (ud?.borderMat) (ud.borderMat as THREE.MeshStandardMaterial).emissive.copy(accent)
@@ -1051,15 +997,16 @@ export default function Gallery3D() {
 
       ;(starMat.uniforms.uTime.value as number) = elapsed
 
-      ambient.intensity = 0.10 + mid * 0.10
-      hemi.intensity = 0.18 + bass * 0.08
+      ambient.intensity = 0.06 + mid * 0.08
+      hemi.intensity = 0.12 + bass * 0.10
 
       // 聚光灯小幅呼吸
-      const baseSpot = 0.85
-      const spotI = baseSpot + bass * 0.30 + beat * 0.40
+      // 聚光灯：基础压暗，beat 时大幅抬亮（差异感）
+      const baseSpot = 0.45
+      const spotI = baseSpot + bass * 0.40 + beat * 0.95
       for (const sl of spotLights) sl.intensity = spotI
 
-      bloom.strength = bloomBase + bass * 0.10 + beat * 0.18 + trebleBoost * 0.05
+      bloom.strength = bloomBase + bass * 0.12 + beat * 0.55 + trebleBoost * 0.06
 
       const activeId = currentIdRef.current
       if (activeId !== lastActiveId) {
@@ -1069,6 +1016,7 @@ export default function Gallery3D() {
             (ud.borderMat as THREE.MeshStandardMaterial).emissiveIntensity = (ud.songId === activeId) ? 0.18 : 0.04
           }
         }
+        refreshStageForSongId(activeId)
         lastActiveId = activeId
       }
       for (const sm of frameShaders) {
@@ -1077,6 +1025,53 @@ export default function Gallery3D() {
         sm.uniforms.uBass.value = bass
         sm.uniforms.uBeat.value = beat
         sm.uniforms.uActive.value = isActive
+      }
+
+      // ── NOW PLAYING 舞台动画 ──────────────────────────────────────
+      const stageVisible = activeId !== null
+      stage.visible = stageVisible
+      if (stageVisible) {
+        // 封面浮起 + 呼吸 + 节拍冲击（差异感更强）
+        const breathe = Math.sin(elapsed * 1.2) * 0.06 + bass * 0.18 + beat * 0.42
+        stageCover.position.y = 2.6 + breathe
+        const scale = 1.0 + bass * 0.10 + beat * 0.22
+        stageCover.scale.setScalar(scale)
+
+        // halo billboard + 节拍放大
+        stageHalo.lookAt(camera.position.x, stageHalo.position.y, camera.position.z)
+        const haloScale = 1.0 + Math.sin(elapsed * 0.7) * 0.03 + bass * 0.06 + beat * 0.18
+        stageHalo.scale.setScalar(haloScale)
+
+        // halo / 地面光斑 uniform
+        ;(stageHaloMat.uniforms.uTime.value as number) = elapsed
+        ;(stageHaloMat.uniforms.uBass.value as number) = bass
+        ;(stageHaloMat.uniforms.uBeat.value as number) = beat
+        ;(stageFloorMat.uniforms.uTime.value as number) = elapsed
+        ;(stageFloorMat.uniforms.uBass.value as number) = bass
+        ;(stageFloorMat.uniforms.uBeat.value as number) = beat
+
+        // 频谱柱：拉大柱高动态范围 + 加快回落，节拍差别更明显
+        const bandsLen = frame.bands.length
+        if (bandsLen > 0) {
+          const inst = (barGeo.getAttribute('aInst') as THREE.InstancedBufferAttribute).array as Float32Array
+          for (let i = 0; i < STAGE_BAR_COUNT; i++) {
+            const half = i < 16 ? i : i - 16
+            const t = half / 15
+            const bIdx = Math.min(bandsLen - 1, Math.round(t * (bandsLen - 1)))
+            const target = Math.min(3.4, Math.pow(frame.bands[bIdx].energy, 0.85) * 3.2 + beat * 1.0)
+            const prev = inst[i * 3 + 2]
+            // 上升快、下降稍慢，节拍 attack 更明显
+            const rate = target > prev ? 0.55 : 0.18
+            inst[i * 3 + 2] = prev * (1 - rate) + target * rate
+          }
+          ;(barGeo.getAttribute('aInst') as THREE.InstancedBufferAttribute).needsUpdate = true
+        }
+
+        // 名称铭牌 / NOW PLAYING 标签 / 封面 都面向相机（绕 Y 轴）
+        const camAng = Math.atan2(camera.position.x - stage.position.x, camera.position.z - stage.position.z)
+        stageNamePlate.rotation.y = camAng
+        stageLabel.rotation.y = camAng
+        stageCover.rotation.y = camAng
       }
 
       composer.render()
@@ -1108,6 +1103,15 @@ export default function Gallery3D() {
       clearFrames()
       starGeo.dispose()
       starMat.dispose()
+      stageCoverMat.dispose()
+      stageHaloMat.dispose()
+      stageFloorMat.dispose()
+      barGeo.dispose()
+      barMat.dispose()
+      stageNamePlateMat.dispose()
+      stageLabelMat.dispose()
+      if (stageCoverTex) stageCoverTex.dispose()
+      if (stagePlateTex) stagePlateTex.dispose()
       reflector.dispose()
       ;(floorOverlay.material as THREE.Material).dispose()
       composer.dispose()
