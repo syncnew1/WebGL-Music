@@ -74,9 +74,10 @@ export const init = (gl: GL): SpectrumState => {
       o = vec4(uTertiary, 0.85);
       return;
     }
-    // hue moves along x; brightness modulated by centroid + energy
+    // primary→secondary 横向渐变；tertiary 仅作为顶端高光，且不喧宾夺主
     vec3 col = mix(uPrimary, uSecondary, vBar);
-    col = mix(col, uTertiary, smoothstep(0.4, 1.0, vT) * (0.4 + uCentroid * 0.5));
+    float tipMix = smoothstep(0.78, 1.0, vT) * (0.22 + uCentroid * 0.18);
+    col = mix(col, uTertiary, tipMix);
     float gain = 0.55 + vEnergy * 1.1;
     o = vec4(col * gain, 0.85 + vEnergy * 0.15);
   }`

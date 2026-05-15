@@ -1,7 +1,6 @@
-import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { useLayout } from '../providers/LayoutProvider'
-import { MdHome, MdLibraryMusic, MdQueueMusic, MdPerson, MdSearch, MdChevronLeft, MdChevronRight, MdBuildCircle, MdViewInAr } from 'react-icons/md'
+import { MdHome, MdLibraryMusic, MdQueueMusic, MdPerson, MdSearch, MdChevronLeft, MdChevronRight, MdViewInAr, MdConstruction } from 'react-icons/md'
 
 const Logo = () => (
   <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
@@ -21,12 +20,12 @@ const Logo = () => (
 export default function NavSidebar() {
   const { leftOpen, toggleLeft } = useLayout() as any
 
-  const navItems = [
+  const primary = [
     { to: '/', icon: <MdHome size={20} />, label: '首页' },
-    { to: '/search', icon: <MdSearch size={20} />, label: '搜索' },
+    { to: '/gallery-3d', icon: <MdViewInAr size={20} />, label: '3D 画廊' },
     { to: '/library', icon: <MdLibraryMusic size={20} />, label: '音乐库' },
     { to: '/playlists', icon: <MdQueueMusic size={20} />, label: '歌单' },
-    { to: '/profile', icon: <MdPerson size={20} />, label: '个人中心' },
+    { to: '/search', icon: <MdSearch size={20} />, label: '搜索' },
   ]
 
   return (
@@ -37,7 +36,7 @@ export default function NavSidebar() {
             <Logo />
             <div style={{ display: 'grid', gap: 2 }}>
               <span style={{ fontFamily: 'Righteous, sans-serif', fontSize: 15, letterSpacing: '0.05em', color: '#e8eaf0', whiteSpace: 'nowrap' }}>WebGL Music</span>
-              <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Immersive Console</span>
+              <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Visualizer Console</span>
             </div>
           </div>
         ) : <Logo />}
@@ -62,7 +61,7 @@ export default function NavSidebar() {
       {leftOpen && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 8px', position: 'relative', zIndex: 1 }}>导航</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, position: 'relative', zIndex: 1 }}>
-        {navItems.map(item => (
+        {primary.map(item => (
           <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
             {item.icon}
             <span className="label">{item.label}</span>
@@ -71,20 +70,20 @@ export default function NavSidebar() {
 
         <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, var(--border), transparent)', margin: '12px 8px' }} />
 
-        {leftOpen && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 8px' }}>工具</div>}
+        {leftOpen && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 12px 8px' }}>其它</div>}
 
-        <NavLink to="/tools/batch-upload" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-          <MdBuildCircle size={20} />
-          <span className="label">批量上传</span>
+        <NavLink to="/profile" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <MdPerson size={20} />
+          <span className="label">个人中心</span>
         </NavLink>
 
-        <NavLink to="/gallery-3d" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-          <MdViewInAr size={20} />
-          <span className="label">3D 画廊</span>
+        <NavLink to="/tools/batch-upload" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+          <MdConstruction size={20} />
+          <span className="label">工具</span>
         </NavLink>
       </div>
 
-      {leftOpen && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0 4px', letterSpacing: '0.12em', position: 'relative', zIndex: 1 }}>v0.1.0</div>}
+      {leftOpen && <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0 4px', letterSpacing: '0.12em', position: 'relative', zIndex: 1 }}>v0.2.0</div>}
     </aside>
   )
 }

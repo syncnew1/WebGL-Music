@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
@@ -81,32 +81,7 @@ const FRAME_FRAG = `
   }
 `
 
-// 体积光锥：从画框上方斜向下罩住封面
-const CONE_VERT = `
-  varying vec2 vUv;
-  void main(){
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`
-const CONE_FRAG = `
-  precision highp float;
-  varying vec2 vUv;
-  uniform vec3 uColor;
-  uniform float uIntensity;
-  uniform float uTime;
-  void main(){
-    // uv.y 0=顶 1=底；中心列 uv.x=0.5
-    float fade = smoothstep(1.0, 0.0, vUv.y);
-    float center = 1.0 - abs(vUv.x - 0.5) * 2.0;
-    center = smoothstep(0.0, 1.0, center);
-    float dust = 0.85 + 0.15 * sin(vUv.y * 22.0 - uTime * 0.6);
-    float a = fade * pow(center, 1.6) * dust * uIntensity * 0.32;
-    gl_FragColor = vec4(uColor, a);
-  }
-`
-
-// 反射地面在 Reflector 上叠加的 fbm "尘雾" + bass 同心波（着色叠层）
+// 反射地面上的六边形网格 + 节拍同心波
 const FLOOR_OVERLAY_VERT = `
   varying vec2 vWorldXZ;
   void main(){
@@ -123,24 +98,65 @@ const FLOOR_OVERLAY_FRAG = `
   uniform float uTime;
   uniform float uBass;
   uniform float uBeat;
-  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float vnoise(vec2 p){
-    vec2 i = floor(p), f = fract(p);
-    float a = hash(i), b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  // hex 网格距边缘的距离，用于画线
+  // 参考 IQ 的 hex grid 公式
+  vec4 hexCoords(vec2 uv){
+    vec2 r = vec2(1.0, 1.7320508);
+    vec2 h = r * 0.5;
+    vec2 a = mod(uv, r) - h;
+    vec2 b = mod(uv - h, r) - h;
+    vec2 gv = dot(a, a) < dot(b, b) ? a : b;
+    float x = atan(gv.x, gv.y);
+    float y = 0.5 - max(dot(gv, normalize(vec2(1.0, 1.732))),
+                        max(dot(gv, normalize(vec2(1.0, -1.732))),
+                            abs(gv.x)));
+    return vec4(x, y, gv.x, gv.y);
   }
   void main(){
     vec2 q = vWorldXZ - uCamXZ;
     float r = length(q);
-    float ring = sin(r * 1.2 - uTime * 1.4 + uBass * 3.0);
-    float ringMask = smoothstep(0.7, 1.0, ring) * smoothstep(34.0, 4.0, r);
-    float shockR = 4.0 + uBeat * 18.0;
-    float shock = smoothstep(0.6, 0.0, abs(r - shockR)) * uBeat;
-    float dust = vnoise(vWorldXZ * 0.3 + vec2(0.0, uTime * 0.05)) * 0.06;
-    float alpha = (ringMask * 0.30 + shock * 0.55 + dust) * smoothstep(60.0, 4.0, r);
+
+    // 1) hex 网格线（远处淡化）
+    vec2 uv = vWorldXZ * 0.32;
+    vec4 hc = hexCoords(uv);
+    float line = smoothstep(0.04, 0.0, hc.y) * 0.55;
+    line *= smoothstep(70.0, 6.0, r);
+
+    // 2) bass 同心波
+    float ring = sin(r * 0.9 - uTime * 1.2 + uBass * 3.0);
+    float ringMask = smoothstep(0.78, 1.0, ring) * smoothstep(40.0, 4.0, r);
+
+    // 3) beat shockwave
+    float shockR = 4.0 + uBeat * 22.0;
+    float shock = smoothstep(0.7, 0.0, abs(r - shockR)) * uBeat;
+
+    float alpha = (line * 0.55 + ringMask * 0.32 + shock * 0.6) * smoothstep(80.0, 4.0, r);
     gl_FragColor = vec4(uAccent, alpha);
+  }
+`
+
+// 远景星点 sprite
+const STAR_VERT = `
+  attribute float aSize;
+  attribute float aTwinkle;
+  varying float vTwinkle;
+  uniform float uTime;
+  void main(){
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * (260.0 / -mv.z);
+    gl_Position = projectionMatrix * mv;
+    vTwinkle = 0.6 + 0.4 * sin(uTime * (0.4 + aTwinkle * 1.4) + aTwinkle * 6.28);
+  }
+`
+const STAR_FRAG = `
+  precision highp float;
+  varying float vTwinkle;
+  uniform vec3 uColor;
+  void main(){
+    vec2 q = gl_PointCoord - 0.5;
+    float r = length(q);
+    float a = smoothstep(0.5, 0.0, r) * vTwinkle;
+    gl_FragColor = vec4(uColor, a * 0.7);
   }
 `
 
@@ -241,6 +257,41 @@ export default function Gallery3D() {
     floorOverlay.position.y = 0.001
     scene.add(floorOverlay)
 
+    // ── 远景星点 ─────────────────────────────────────────────────
+    const STAR_COUNT = 800
+    const starPositions = new Float32Array(STAR_COUNT * 3)
+    const starSizes = new Float32Array(STAR_COUNT)
+    const starTwinkle = new Float32Array(STAR_COUNT)
+    for (let i = 0; i < STAR_COUNT; i++) {
+      // 球壳分布，远离玩家，偏上半球
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(1 - Math.random() * 1.4) // 偏上
+      const radius = 80 + Math.random() * 90
+      starPositions[i * 3 + 0] = Math.sin(phi) * Math.cos(theta) * radius
+      starPositions[i * 3 + 1] = Math.cos(phi) * radius * 0.6 + 12
+      starPositions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius - 60
+      starSizes[i] = 0.7 + Math.random() * 1.8
+      starTwinkle[i] = Math.random()
+    }
+    const starGeo = new THREE.BufferGeometry()
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
+    starGeo.setAttribute('aSize', new THREE.BufferAttribute(starSizes, 1))
+    starGeo.setAttribute('aTwinkle', new THREE.BufferAttribute(starTwinkle, 1))
+    const starMat = new THREE.ShaderMaterial({
+      vertexShader: STAR_VERT,
+      fragmentShader: STAR_FRAG,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(palette0.light) },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    })
+    const stars = new THREE.Points(starGeo, starMat)
+    scene.add(stars)
+
     // ── controls ───────────────────────────────────────────────────
     const controls = new PointerLockControls(camera, renderer.domElement)
     scene.add(controls.object)
@@ -287,7 +338,6 @@ export default function Gallery3D() {
     const hitMeshes: THREE.Mesh[] = []
     const disposableTextures: THREE.Texture[] = []
     const frameShaders: THREE.ShaderMaterial[] = []
-    const coneShaders: THREE.ShaderMaterial[] = []
     const spotLights: THREE.SpotLight[] = []
 
     const makeFallbackTexture = (title: string, artist?: string) => {
@@ -342,7 +392,6 @@ export default function Gallery3D() {
     const clearFrames = () => {
       hitMeshes.length = 0
       frameShaders.length = 0
-      coneShaders.length = 0
       // remove spot lights from scene
       for (const sl of spotLights) {
         scene.remove(sl)
@@ -409,7 +458,7 @@ export default function Gallery3D() {
         // 封面（贴在边框正面，比边框小一圈）
         const coverMat = new THREE.MeshBasicMaterial({
           map: makeFallbackTexture(song.title, song.artist),
-          side: THREE.FrontSide,
+          side: THREE.DoubleSide,
           toneMapped: true,
         })
         const cover = new THREE.Mesh(new THREE.PlaneGeometry(2.34, 2.34), coverMat)
@@ -432,7 +481,7 @@ export default function Gallery3D() {
           transparent: true,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
-          side: THREE.FrontSide,
+          side: THREE.DoubleSide,
         })
         ;(glowMat as any).userData.songId = song.id
         const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 2.5), glowMat)
@@ -452,36 +501,6 @@ export default function Gallery3D() {
         plate.position.set(frameX + facing * 0.025, frameY - 1.62, frameZ)
         plate.rotation.y = rotY
         frameRoot.add(plate)
-
-        // 体积光锥（在画框外侧上方斜向下）
-        const cone = new THREE.Mesh(
-          new THREE.PlaneGeometry(2.6, 4.2),
-          new THREE.ShaderMaterial({
-            vertexShader: CONE_VERT,
-            fragmentShader: CONE_FRAG,
-            uniforms: {
-              uColor: { value: accent.clone() },
-              uIntensity: { value: 1.0 },
-              uTime: { value: 0 },
-            },
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            fog: false,
-          }),
-        )
-        // 锥从画框上方 1.8m，往内侧倾斜 18°
-        cone.position.set(frameX + facing * 0.55, frameY + 1.55, frameZ)
-        cone.rotation.y = rotY
-        cone.rotation.x = -0.30 * facing
-        cone.scale.set(1, 1, 1)
-        // 让锥的顶点对齐画框上方：用底心为基准向下伸展，所以位移再下移 1.6
-        cone.position.y -= 0.5
-        frameRoot.add(cone)
-        coneShaders.push(cone.material as THREE.ShaderMaterial)
-        ;(cone as any).userData.songId = song.id
-        ;(cone as any).userData.coneMat = cone.material
 
         // SpotLight 真实打光（帮助封面 emissive 与反射地面）
         const spot = new THREE.SpotLight(palette.light, 0.85, 9, Math.PI / 6, 0.5, 1.4)
@@ -576,10 +595,8 @@ export default function Gallery3D() {
         ;(sm.uniforms.uAccent.value as THREE.Color).copy(accent)
         ;(sm.uniforms.uActiveColor.value as THREE.Color).copy(accentActive)
       }
-      for (const cm of coneShaders) {
-        ;(cm.uniforms.uColor.value as THREE.Color).copy(accent)
-      }
       for (const sl of spotLights) sl.color.set(p.light)
+      ;(starMat.uniforms.uColor.value as THREE.Color).set(p.light)
       for (const obj of frameRoot.children) {
         const ud = (obj as any).userData
         if (ud?.borderMat) (ud.borderMat as THREE.MeshStandardMaterial).emissive.copy(accent)
@@ -636,6 +653,8 @@ export default function Gallery3D() {
       ;(floorOverlay.material as THREE.ShaderMaterial).uniforms.uBeat.value = beat
       ;((floorOverlay.material as THREE.ShaderMaterial).uniforms.uCamXZ.value as THREE.Vector2).set(camera.position.x, camera.position.z)
 
+      ;(starMat.uniforms.uTime.value as number) = elapsed
+
       ambient.intensity = 0.10 + mid * 0.10
       hemi.intensity = 0.18 + bass * 0.08
 
@@ -662,10 +681,6 @@ export default function Gallery3D() {
         sm.uniforms.uBass.value = bass
         sm.uniforms.uBeat.value = beat
         sm.uniforms.uActive.value = isActive
-      }
-      for (const cm of coneShaders) {
-        cm.uniforms.uTime.value = elapsed
-        cm.uniforms.uIntensity.value = 0.7 + bass * 0.4 + beat * 0.5
       }
 
       composer.render()
@@ -695,6 +710,8 @@ export default function Gallery3D() {
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
 
       clearFrames()
+      starGeo.dispose()
+      starMat.dispose()
       reflector.dispose()
       ;(floorOverlay.material as THREE.Material).dispose()
       composer.dispose()
@@ -711,40 +728,109 @@ export default function Gallery3D() {
   }, [gallerySongs])
 
   return (
-    <div className="grid gap-4">
-      <section className="page-hero">
-        <div className="page-hero-inner grid gap-4">
-          <div className="page-heading">
-            <div className="page-kicker">IMMERSIVE GALLERY</div>
-            <h2 className="page-title">漫游画廊</h2>
-            <p className="page-subtitle">悬浮在虚空中的封面、镜面地面、顶光锥与音频呼应。WASD 移动，鼠标转向，准星对准任意封面左键播放。</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button className="btn btn-primary" onClick={() => lockRef.current?.()}>进入漫游</button>
-            <div className="status-chip">{tip}</div>
-            <div className="status-chip">展厅藏品：{gallerySongs.length}</div>
-          </div>
-        </div>
-      </section>
-
+    <div style={{ position: 'relative', width: '100%', height: 'calc(100vh - 200px)', minHeight: 540 }}>
       <div style={{
-        position: 'relative',
-        width: '100%',
-        height: 'calc(100vh - 290px)',
-        minHeight: 460,
+        position: 'absolute', inset: 0,
         borderRadius: 'var(--radius-xl)',
         overflow: 'hidden',
         border: '1px solid var(--border)',
-        background: '#06070a',
+        background: '#040508',
         boxShadow: 'var(--shadow)',
       }}>
         <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 
-        <div style={{ position:'absolute', inset:0, pointerEvents:'none', background:'radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 42%, rgba(2,4,10,0.55) 100%)' }} />
+        {/* 边缘渐隐遮罩，让 HUD 在画面边角更清晰 */}
+        <div style={{ position:'absolute', inset:0, pointerEvents:'none', background:'radial-gradient(circle at 50% 55%, rgba(0,0,0,0) 38%, rgba(2,4,10,0.55) 100%)' }} />
+        <div style={{ position:'absolute', inset:0, pointerEvents:'none', background:'linear-gradient(180deg, rgba(2,4,10,0.55) 0%, transparent 18%, transparent 78%, rgba(2,4,10,0.55) 100%)' }} />
 
-        <div style={{ position: 'absolute', left: '50%', top: '50%', width: 18, height: 18, marginLeft: -9, marginTop: -9, borderRadius: '50%', border: '1.5px solid rgba(232,234,240,0.85)', boxShadow: '0 0 10px rgba(49,194,124,0.35)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', left: '50%', top: '50%', width: 4, height: 4, marginLeft: -2, marginTop: -2, borderRadius: '50%', background: 'var(--accent-bright)', pointerEvents: 'none' }} />
+        {/* 顶部 HUD：标题 + 状态 */}
+        <div style={{
+          position: 'absolute', left: 18, top: 16,
+          display: 'flex', alignItems: 'center', gap: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(14,19,34,0.72)',
+            border: '1px solid var(--border-2)',
+            backdropFilter: 'blur(10px)',
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M3 21V8l9-5 9 5v13" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" style={{ color: 'var(--accent-bright)' }} />
+              <path d="M9 21v-9h6v9" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" style={{ color: 'var(--accent-bright)' }} />
+            </svg>
+          </div>
+          <div style={{ lineHeight: 1.15 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'var(--accent-bright)', fontWeight: 700 }}>IMMERSIVE GALLERY</div>
+            <div style={{ fontFamily: 'Righteous, sans-serif', fontSize: 19, color: 'var(--text)', letterSpacing: '0.04em' }}>漫游画廊</div>
+          </div>
+          <div style={{
+            marginLeft: 10,
+            padding: '5px 10px',
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid var(--border)',
+            background: 'rgba(14,19,34,0.72)',
+            color: 'var(--text-sub)',
+            fontSize: 11,
+            letterSpacing: '0.06em',
+            backdropFilter: 'blur(10px)',
+          }}>
+            <span style={{
+              display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+              background: isLocked ? 'var(--accent-bright)' : 'var(--text-muted)',
+              boxShadow: isLocked ? '0 0 6px var(--accent)' : 'none',
+              marginRight: 6, verticalAlign: 'middle',
+            }} />
+            {isLocked ? 'LOCKED' : 'FREE LOOK'} · {themeRef.current.toUpperCase()} · {gallerySongs.length} 件
+          </div>
+        </div>
 
+        {/* 右上：进入漫游 / 操作提示 */}
+        <div style={{
+          position: 'absolute', right: 18, top: 16,
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{
+            padding: '6px 12px',
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid var(--border)',
+            background: 'rgba(14,19,34,0.72)',
+            color: 'var(--text-sub)',
+            fontSize: 11,
+            backdropFilter: 'blur(10px)',
+            pointerEvents: 'none',
+          }}>
+            WASD · 鼠标 · 左键播放 · ESC 退出
+          </div>
+          <button
+            onClick={() => lockRef.current?.()}
+            className="cursor-pointer"
+            style={{
+              padding: '8px 16px',
+              borderRadius: 'var(--radius-full)',
+              border: '1px solid rgba(49,194,124,0.45)',
+              background: 'linear-gradient(135deg, rgba(49,194,124,0.18) 0%, rgba(49,194,124,0.10) 100%)',
+              color: 'var(--accent-bright)',
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              backdropFilter: 'blur(10px)',
+              transition: 'background 200ms ease, border-color 200ms ease',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={e => { (e.currentTarget.style.background = 'linear-gradient(135deg, rgba(49,194,124,0.28) 0%, rgba(49,194,124,0.16) 100%)') }}
+            onMouseLeave={e => { (e.currentTarget.style.background = 'linear-gradient(135deg, rgba(49,194,124,0.18) 0%, rgba(49,194,124,0.10) 100%)') }}
+          >
+            进入漫游
+          </button>
+        </div>
+
+        {/* 中央准星 */}
+        <div style={{ position: 'absolute', left: '50%', top: '50%', width: 16, height: 16, marginLeft: -8, marginTop: -8, borderRadius: '50%', border: '1.5px solid rgba(232,234,240,0.78)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: '50%', top: '50%', width: 4, height: 4, marginLeft: -2, marginTop: -2, borderRadius: '50%', background: 'var(--accent-bright)', boxShadow: '0 0 6px var(--accent)', pointerEvents: 'none' }} />
+
+        {/* 焦点信息卡 */}
         {focusedLabel && (
           <div style={{
             position: 'absolute',
@@ -755,7 +841,7 @@ export default function Gallery3D() {
             padding: '7px 12px',
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border-2)',
-            background: 'rgba(14,19,34,0.88)',
+            background: 'rgba(14,19,34,0.84)',
             color: 'var(--text)',
             fontSize: 12,
             whiteSpace: 'nowrap',
@@ -769,36 +855,23 @@ export default function Gallery3D() {
           </div>
         )}
 
+        {/* 底部 tip */}
         <div style={{
-          position: 'absolute', left: 14, bottom: 12,
-          padding: '6px 10px',
+          position: 'absolute', left: 18, bottom: 16,
+          padding: '7px 12px',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--border)',
-          background: 'rgba(14,19,34,0.78)',
+          background: 'rgba(14,19,34,0.72)',
           color: 'var(--text-sub)',
           fontSize: 12,
           pointerEvents: 'none',
           backdropFilter: 'blur(10px)',
+          maxWidth: 'calc(100% - 36px)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
         }}>
-          WASD 移动 · 鼠标转向 · 左键播放 · Enter 快捷播放
-        </div>
-
-        <div style={{
-          position: 'absolute', right: 14, top: 12,
-          padding: '6px 12px',
-          borderRadius: 'var(--radius-full)',
-          border: '1px solid var(--border)',
-          background: 'rgba(14,19,34,0.78)',
-          color: 'var(--text-sub)',
-          fontSize: 11,
-          letterSpacing: '0.08em',
-          pointerEvents: 'none',
-          backdropFilter: 'blur(10px)',
-        }}>
-          IMMERSIVE HALL · {themeRef.current.toUpperCase()}
-          <span style={{ marginLeft: 8, color: isLocked ? 'var(--accent-bright)' : 'var(--text-muted)' }}>
-            {isLocked ? '• LOCKED' : '• FREE LOOK'}
-          </span>
+          {tip}
         </div>
       </div>
     </div>

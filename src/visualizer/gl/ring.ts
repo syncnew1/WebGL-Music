@@ -79,8 +79,8 @@ export const init = (gl: GL): RingState => {
   void main(){
     // gradient from base of bar to its tip
     vec3 col = mix(uPrimary, uSecondary, vT);
-    // tip glow
-    col += uTertiary * pow(vT, 4.0) * (0.6 + vEnergy * 0.6);
+    // 末端高光：仅顶端最后一截掺入 tertiary，避免覆盖整段
+    col += uTertiary * pow(vT, 6.0) * (0.25 + vEnergy * 0.35);
     // soft edge falloff along the bar's width
     float edge = smoothstep(0.0, 0.08, vLocal.x) * smoothstep(1.0, 0.92, vLocal.x);
     float alpha = (0.55 + vEnergy * 0.6) * edge;

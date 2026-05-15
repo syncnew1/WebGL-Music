@@ -4,10 +4,10 @@ import { useVisualizer } from '../providers/VisualizerProvider'
 import Button from './ui/Button'
 
 const themes = [
-  { id: 'amber-dark', label: '琥珀', gradient: 'linear-gradient(135deg,#ff7319 0%,#ffd14d 55%,#fff2c7 100%)' },
-  { id: 'neon-grid',  label: '霓虹', gradient: 'linear-gradient(135deg,#21d4ee 0%,#a854f7 55%,#f26bd9 100%)' },
-  { id: 'deep-space', label: '深空', gradient: 'linear-gradient(135deg,#4d8cf2 0%,#f574b5 55%,#8c80f2 100%)' },
-  { id: 'rainbow',    label: '晨曦', gradient: 'linear-gradient(135deg,#31c27c 0%,#21d4ee 55%,#fcc74d 100%)' },
+  { id: 'amber-dark', label: '琥珀', stops: ['#ff7319', '#ffd14d', '#fff2c7'] },
+  { id: 'neon-grid',  label: '霓虹', stops: ['#21d4ee', '#a854f7', '#f26bd9'] },
+  { id: 'deep-space', label: '深空', stops: ['#4d8cf2', '#f574b5', '#8c80f2'] },
+  { id: 'rainbow',    label: '翡翠', stops: ['#31c27c', '#21d4ee', '#fcc74d'] },
 ] as const
 
 export default function VisualizerControls() {
@@ -47,12 +47,19 @@ export default function VisualizerControls() {
                 transition: 'all 160ms ease',
               }}
             >
-              <span style={{
-                width: 16, height: 16, borderRadius: '50%',
-                background: t.gradient,
-                boxShadow: active ? '0 0 10px rgba(255,255,255,0.18)' : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
-                flexShrink: 0,
-              }} />
+              <span
+                aria-hidden
+                style={{
+                  display: 'inline-flex',
+                  width: 22, height: 14, borderRadius: 4, overflow: 'hidden',
+                  boxShadow: active ? '0 0 0 1px rgba(255,255,255,0.25)' : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
+                  flexShrink: 0,
+                }}
+              >
+                {t.stops.map(c => (
+                  <span key={c} style={{ flex: 1, background: c, display: 'block' }} />
+                ))}
+              </span>
               {t.label}
             </button>
           )

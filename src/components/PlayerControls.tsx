@@ -1,12 +1,39 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePlayer, useProgress } from '../providers/PlayerProvider'
 import { FaStepBackward as FaPrev, FaStepForward as FaNext, FaPlay, FaPause, FaRandom, FaHeart } from 'react-icons/fa'
-import { MdRepeat, MdRepeatOne, MdQueueMusic, MdLyrics, MdGraphicEq, MdAutoAwesome } from 'react-icons/md'
+import { MdRepeat, MdRepeatOne, MdQueueMusic, MdLyrics, MdGraphicEq, MdAutoAwesome, MdFullscreen, MdInsights } from 'react-icons/md'
 import CoverImage from './CoverImage'
 import { useData } from '../providers/DataProvider'
 import Tooltip from './ui/Tooltip'
 import VolumeControl from './ui/VolumeControl'
 import MiniSpectrum from './MiniSpectrum'
+
+const menuItemStyle = (): React.CSSProperties => ({
+  display:'flex', alignItems:'center', gap:10,
+  width:'100%',
+  padding:'9px 10px',
+  borderRadius:10,
+  background:'transparent',
+  border:'1px solid transparent',
+  color:'var(--text)',
+  cursor:'pointer',
+  textAlign:'left',
+  transition:'background 150ms, border-color 150ms',
+})
+const menuIconStyle = (bg: string, color: string): React.CSSProperties => ({
+  width:30, height:30, borderRadius:8, flexShrink:0,
+  display:'inline-flex', alignItems:'center', justifyContent:'center',
+  background: bg, color,
+})
+const menuHoverIn = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+  e.currentTarget.style.borderColor = 'var(--border)'
+}
+const menuHoverOut = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'transparent'
+  e.currentTarget.style.borderColor = 'transparent'
+}
 
 export default function PlayerControls(){
   const {
@@ -16,11 +43,29 @@ export default function PlayerControls(){
     current, mode, setMode,
     playbackError,
     rightOpen, rightMode, openRight,
-    centerOpen, openCenter,
+    centerOpen, openCenter, closeCenter,
     smartQueueEnabled, toggleSmartQueue,
   } = usePlayer()
   const { progress, duration } = useProgress()
   const { songs, isSongLiked, toggleLikeSong } = useData()
+  const navigate = useNavigate()
+  const [visMenuOpen, setVisMenuOpen] = React.useState(false)
+  const visMenuRef = React.useRef<HTMLDivElement | null>(null)
+
+  React.useEffect(() => {
+    if (!visMenuOpen) return
+    const onClick = (e: MouseEvent) => {
+      if (!visMenuRef.current) return
+      if (!visMenuRef.current.contains(e.target as Node)) setVisMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') setVisMenuOpen(false) }
+    window.addEventListener('mousedown', onClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [visMenuOpen])
 
   const pct = duration ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0
   const curSong = React.useMemo(() => songs.find((s:any) => s.id === current?.id), [songs, current?.id])
@@ -114,9 +159,69 @@ export default function PlayerControls(){
         <Tooltip label={smartQueueEnabled ? '智能队列：开启' : '智能队列：关闭'}>
           <button className="btn-circle" style={{ color: smartQueueEnabled ? 'var(--accent)' : 'var(--text-muted)', fontSize:18 }} onClick={toggleSmartQueue}><MdAutoAwesome /></button>
         </Tooltip>
-        <Tooltip label="可视化">
-          <button className="btn-circle" style={{ color: centerOpen ? 'var(--accent)' : 'var(--text-muted)', fontSize:20 }} onClick={openCenter}><MdGraphicEq /></button>
-        </Tooltip>
+        <div ref={visMenuRef} style={{ position:'relative' }}>
+          <Tooltip label="可视化菜单">
+            <button
+              className="btn-circle"
+              style={{
+                color: (visMenuOpen || centerOpen) ? 'var(--accent)' : 'var(--text-muted)',
+                fontSize:20,
+                position:'relative',
+              }}
+              onClick={() => setVisMenuOpen(v => !v)}
+              aria-haspopup="menu"
+              aria-expanded={visMenuOpen}
+            >
+              <MdGraphicEq />
+            </button>
+          </Tooltip>
+          {visMenuOpen && (
+            <div
+              role="menu"
+              style={{
+                position:'absolute',
+                bottom:'calc(100% + 10px)',
+                right:0,
+                width:240,
+                padding:6,
+                borderRadius:14,
+                background:'rgba(14,19,34,0.96)',
+                border:'1px solid var(--border-2)',
+                boxShadow:'0 18px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(49,194,124,0.06)',
+                backdropFilter:'blur(14px)',
+                zIndex:200,
+              }}
+            >
+              <div style={{ padding:'8px 10px 6px', fontSize:10, fontWeight:700, letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--text-muted)' }}>可视化</div>
+              <button
+                className="cursor-pointer"
+                onClick={() => { setVisMenuOpen(false); if (centerOpen) closeCenter(); navigate('/visualizer') }}
+                style={menuItemStyle()}
+                onMouseEnter={menuHoverIn}
+                onMouseLeave={menuHoverOut}
+              >
+                <span style={menuIconStyle('rgba(49,194,124,0.18)','var(--accent-bright)')}><MdFullscreen size={18} /></span>
+                <span style={{ display:'grid', gap:2, minWidth:0 }}>
+                  <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>全屏可视化</span>
+                  <span style={{ fontSize:11, color:'var(--text-muted)' }}>沉浸模式 · 快捷键 F</span>
+                </span>
+              </button>
+              <button
+                className="cursor-pointer"
+                onClick={() => { setVisMenuOpen(false); if (centerOpen) closeCenter(); else openCenter() }}
+                style={menuItemStyle()}
+                onMouseEnter={menuHoverIn}
+                onMouseLeave={menuHoverOut}
+              >
+                <span style={menuIconStyle('rgba(168,85,247,0.18)','#c4a3ff')}><MdInsights size={18} /></span>
+                <span style={{ display:'grid', gap:2, minWidth:0 }}>
+                  <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{centerOpen ? '关闭音频分析' : '音频分析面板'}</span>
+                  <span style={{ fontSize:11, color:'var(--text-muted)' }}>频段 / 节拍 / 和声 / 乐器</span>
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
         <Tooltip label="播放队列">
           <button className="btn-circle" style={{ color: rightOpen && rightMode==='queue' ? 'var(--accent)' : 'var(--text-muted)', fontSize:20 }} onClick={() => openRight('queue')}><MdQueueMusic /></button>
         </Tooltip>
